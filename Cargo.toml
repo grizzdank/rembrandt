@@ -1,0 +1,45 @@
+[package]
+name = "rembrandt"
+version = "0.1.0"
+edition = "2024"
+description = "Orchestration layer for coding agents - parallel execution without collision"
+license = "MIT"
+repository = "https://github.com/davegraham/rembrandt"
+
+[dependencies]
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Git operations
+git2 = "0.19"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Process management (for spawning agents)
+portable-pty = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
