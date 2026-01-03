@@ -5,6 +5,8 @@
 
 pub mod agent;
 pub mod cli;
+pub mod competition;
+pub mod daemon;
 pub mod integration;
 pub mod tui;
 pub mod worktree;
@@ -27,6 +29,24 @@ pub enum RembrandtError {
 
     #[error("Worktree error: {0}")]
     Worktree(String),
+
+    #[error("Competition error: {0}")]
+    Competition(String),
+
+    #[error("Evaluation error: {0}")]
+    Evaluation(String),
+
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    #[error("Daemon error: {0}")]
+    Daemon(String),
+
+    #[error("Session not found: {0}")]
+    SessionNotFound(String),
+
+    #[error("PTY error: {0}")]
+    Pty(String),
 }
 
 pub type Result<T> = std::result::Result<T, RembrandtError>;

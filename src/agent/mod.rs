@@ -34,6 +34,45 @@ impl std::fmt::Display for AgentType {
     }
 }
 
+impl AgentType {
+    /// Parse agent type from CLI string
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "claude-code" | "claude" => AgentType::ClaudeCode,
+            "opencode" => AgentType::OpenCode,
+            "ampcode" | "amp" => AgentType::AmpCode,
+            "codex" => AgentType::Codex,
+            "aider" => AgentType::Aider,
+            other => AgentType::Custom(other.to_string()),
+        }
+    }
+
+    /// Get the command to spawn this agent
+    pub fn command(&self) -> &str {
+        match self {
+            AgentType::ClaudeCode => "claude",
+            AgentType::OpenCode => "opencode",
+            AgentType::AmpCode => "amp",
+            AgentType::Codex => "codex",
+            AgentType::Aider => "aider",
+            AgentType::Custom(name) => name.as_str(),
+        }
+    }
+
+    /// Get default arguments for this agent type
+    pub fn default_args(&self) -> Vec<&'static str> {
+        match self {
+            // Most agents work fine with no args, they'll prompt interactively
+            AgentType::ClaudeCode => vec![],
+            AgentType::OpenCode => vec![],
+            AgentType::AmpCode => vec![],
+            AgentType::Codex => vec![],
+            AgentType::Aider => vec![],
+            AgentType::Custom(_) => vec![],
+        }
+    }
+}
+
 /// Status of an agent session
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -65,6 +104,8 @@ pub struct AgentSession {
     pub branch: String,
     /// Current task/issue ID (Beads)
     pub task_id: Option<String>,
+    /// Competition ID if this agent is part of a competition
+    pub competition_id: Option<String>,
     /// Process ID if running
     pub pid: Option<u32>,
     /// Files currently reserved by this agent
