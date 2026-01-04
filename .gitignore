@@ -7,3 +7,4 @@ Cargo.lock
 
 # bv (beads viewer) local config and caches
 .bv/
+debug_screenshots/

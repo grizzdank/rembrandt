@@ -1,7 +1,7 @@
 //! TUI rendering with ratatui
 
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
@@ -9,16 +9,13 @@ use ratatui::{
 };
 
 use super::app::AGENT_TYPES;
-use super::{App, ViewMode};
+use super::App;
 use crate::daemon::SessionStatus;
 
 /// Render the entire application
 pub fn render(frame: &mut Frame, app: &App) {
-    // Render base view
-    match app.view_mode {
-        ViewMode::Symphony => render_symphony(frame, app),
-        ViewMode::Solo(idx) => render_solo(frame, app, idx),
-    }
+    // Render symphony view (we use direct attach for Solo now)
+    render_symphony(frame, app);
 
     // Render overlays on top
     if app.spawn_picker.is_some() {
@@ -119,77 +116,9 @@ fn render_symphony(frame: &mut Frame, app: &App) {
     }
 
     // Status bar
-    let status_text = app.status_message.as_deref().unwrap_or("Press '?' for help");
+    let status_text = app.status_message.as_deref().unwrap_or("Enter: attach │ s: spawn │ ?: help");
     let status = Paragraph::new(format!(" {} ", status_text))
         .style(Style::default().fg(Color::White).bg(Color::Blue));
-    frame.render_widget(status, chunks[2]);
-}
-
-/// Render solo view (single agent, full screen)
-fn render_solo(frame: &mut Frame, app: &App, session_idx: usize) {
-    let sessions = app.session_list();
-    let session = match sessions.get(session_idx) {
-        Some(s) => s,
-        None => {
-            // Session no longer exists, show message
-            let msg = Paragraph::new("Session no longer exists. Press Esc to return.")
-                .block(Block::default().borders(Borders::ALL));
-            frame.render_widget(msg, frame.area());
-            return;
-        }
-    };
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(10),    // PTY output area
-            Constraint::Length(1),  // Status
-        ])
-        .split(frame.area());
-
-    // Header with session info
-    let (icon, status_text) = App::status_display(&session.status);
-    let header = Paragraph::new(format!(" {} {} - {} ({}) ",
-        icon, session.agent_id, session.command, status_text))
-        .style(Style::default().fg(Color::White).bg(Color::DarkGray))
-        .block(Block::default().borders(Borders::NONE));
-    frame.render_widget(header, chunks[0]);
-
-    // PTY output area - display buffered output
-    let output_block = Block::default()
-        .title(format!(" {} ", session.workdir))
-        .borders(Borders::ALL);
-
-    // Get the PTY output
-    let output_text = app.session_output(&session.id);
-    let output_text = if output_text.is_empty() {
-        format!(
-            "Agent: {}\nCommand: {}\nStatus: {:?}\n\n[Waiting for output...]",
-            session.agent_id, session.command, session.status
-        )
-    } else {
-        // Show the last N lines that fit in the view
-        // Keep last ~100 lines max for display
-        let lines: Vec<&str> = output_text.lines().collect();
-        let visible_lines = chunks[1].height.saturating_sub(2) as usize; // Account for borders
-        let start = lines.len().saturating_sub(visible_lines.max(100));
-        lines[start..].join("\n")
-    };
-
-    let output = Paragraph::new(output_text)
-        .block(output_block)
-        .wrap(Wrap { trim: false });
-    frame.render_widget(output, chunks[1]);
-
-    // Status bar - show attached mode and help
-    let help = "ATTACHED │ Esc: detach │ ?: help │ Keys → PTY";
-    let status_text = match &app.status_message {
-        Some(msg) => format!(" {} │ {} ", help, msg),
-        None => format!(" {} ", help),
-    };
-    let status = Paragraph::new(status_text)
-        .style(Style::default().fg(Color::Black).bg(Color::Green));
     frame.render_widget(status, chunks[2]);
 }
 
@@ -215,75 +144,48 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 }
 
 /// Render help overlay
-fn render_help_overlay(frame: &mut Frame, app: &App) {
+fn render_help_overlay(frame: &mut Frame, _app: &App) {
     let area = centered_rect(60, 70, frame.area());
 
     // Clear the area first
     frame.render_widget(Clear, area);
 
-    let help_text = match app.view_mode {
-        ViewMode::Symphony => vec![
-            Line::from(vec![
-                Span::styled("Symphony View", Style::default().add_modifier(Modifier::BOLD)),
-            ]),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Navigation", Style::default().fg(Color::Yellow)),
-            ]),
-            Line::from("  j/↓     Next session"),
-            Line::from("  k/↑     Previous session"),
-            Line::from("  Enter   Zoom into session (Solo view)"),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Actions", Style::default().fg(Color::Yellow)),
-            ]),
-            Line::from("  s       Spawn new agent"),
-            Line::from("  n       Nudge selected agent"),
-            Line::from("  K/Del   Kill selected agent"),
-            Line::from("  c       Cleanup completed sessions"),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("General", Style::default().fg(Color::Yellow)),
-            ]),
-            Line::from("  ?       Toggle this help"),
-            Line::from("  q       Quit"),
-            Line::from("  Ctrl+C  Quit"),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Press any key to close", Style::default().fg(Color::DarkGray)),
-            ]),
-        ],
-        ViewMode::Solo(_) => vec![
-            Line::from(vec![
-                Span::styled("Solo View (Attached)", Style::default().add_modifier(Modifier::BOLD)),
-            ]),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Input Mode", Style::default().fg(Color::Green)),
-            ]),
-            Line::from("  All keys are forwarded to the agent PTY"),
-            Line::from("  Type normally to interact with the agent"),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Special Keys", Style::default().fg(Color::Yellow)),
-            ]),
-            Line::from("  Esc     Detach (return to Symphony)"),
-            Line::from("  ?       Toggle this help"),
-            Line::from("  Ctrl+Q  Quit Rembrandt"),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Supported Input", Style::default().fg(Color::Yellow)),
-            ]),
-            Line::from("  Letters, numbers, symbols"),
-            Line::from("  Arrow keys, Home/End, PgUp/PgDn"),
-            Line::from("  Enter, Tab, Backspace, Delete"),
-            Line::from("  Ctrl+A through Ctrl+Z"),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Press any key to close", Style::default().fg(Color::DarkGray)),
-            ]),
-        ],
-    };
+    let help_text = vec![
+        Line::from(vec![
+            Span::styled("Rembrandt Dashboard", Style::default().add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Navigation", Style::default().fg(Color::Yellow)),
+        ]),
+        Line::from("  j/↓     Next session"),
+        Line::from("  k/↑     Previous session"),
+        Line::from("  Enter   Attach to session (direct PTY)"),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Actions", Style::default().fg(Color::Yellow)),
+        ]),
+        Line::from("  s       Spawn new agent"),
+        Line::from("  n       Nudge selected agent"),
+        Line::from("  K/Del   Kill selected agent"),
+        Line::from("  c       Cleanup completed sessions"),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("When Attached", Style::default().fg(Color::Cyan)),
+        ]),
+        Line::from("  Ctrl+]  Detach (return to dashboard)"),
+        Line::from("  All other keys go directly to agent"),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("General", Style::default().fg(Color::Yellow)),
+        ]),
+        Line::from("  ?       Toggle this help"),
+        Line::from("  q       Quit"),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Press any key to close", Style::default().fg(Color::DarkGray)),
+        ]),
+    ];
 
     let help = Paragraph::new(help_text)
         .block(Block::default()

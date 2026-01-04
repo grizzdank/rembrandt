@@ -1,10 +1,11 @@
 //! Terminal UI for Rembrandt
 //!
-//! Provides the symphony/solo interface for agent orchestration.
-//! - Symphony view: see all agents at once (the orchestra)
-//! - Solo view: interact with a single agent (the soloist)
+//! Provides the dashboard interface for agent orchestration.
+//! - Dashboard: see all agents, spawn, kill, nudge
+//! - Attach: (WIP) direct PTY control of an agent
 
 mod app;
+mod attach;  // WIP - needs PTY refactor
 mod events;
 mod render;
 

@@ -1,6 +1,5 @@
 //! Main TUI application state and event handling
 
-use super::ViewMode;
 use crate::daemon::{SessionInfo, SessionManager, SessionStatus};
 use crate::worktree::WorktreeManager;
 use std::path::PathBuf;
@@ -48,15 +47,13 @@ impl SpawnPicker {
 
 /// Main application state
 pub struct App {
-    /// Current view mode (Symphony = overview, Solo = zoom)
-    pub view_mode: ViewMode,
     /// Session manager (owns the PTY sessions)
     pub sessions: SessionManager,
     /// Worktree manager
     pub worktrees: WorktreeManager,
     /// Whether the app should quit
     pub should_quit: bool,
-    /// Currently selected session index (in symphony view)
+    /// Currently selected session index
     pub selected_index: usize,
     /// Status message to display
     pub status_message: Option<String>,
@@ -80,12 +77,11 @@ impl App {
         })?;
 
         Ok(Self {
-            view_mode: ViewMode::Symphony,
             sessions: SessionManager::new(),
             worktrees,
             should_quit: false,
             selected_index: 0,
-            status_message: Some("Press 's' to spawn, '?' for help".to_string()),
+            status_message: None,
             repo_path,
             pending_confirm: None,
             show_help: false,
@@ -104,22 +100,6 @@ impl App {
         sessions.get(self.selected_index).cloned()
     }
 
-    /// Get PTY output for a session
-    pub fn session_output(&self, session_id: &str) -> String {
-        self.sessions.read_output(session_id).unwrap_or_default()
-    }
-
-    /// Write data to the currently viewed session's PTY
-    pub fn write_to_session(&mut self, data: &[u8]) -> crate::Result<()> {
-        if let ViewMode::Solo(idx) = self.view_mode {
-            let sessions = self.session_list();
-            if let Some(session) = sessions.get(idx) {
-                self.sessions.write(&session.id, data)?;
-            }
-        }
-        Ok(())
-    }
-
     /// Select next session
     pub fn next_session(&mut self) {
         let count = self.sessions.total_count();
@@ -136,18 +116,15 @@ impl App {
         }
     }
 
-    /// Zoom into the selected session (Symphony -> Solo)
-    pub fn zoom_in(&mut self) {
+    /// Get session ID for the selected session (for attach)
+    pub fn zoom_in(&mut self) -> Option<String> {
         if self.sessions.total_count() > 0 {
-            self.view_mode = ViewMode::Solo(self.selected_index);
-            self.status_message = None; // Clear so help text shows
+            let sessions = self.session_list();
+            if let Some(session) = sessions.get(self.selected_index) {
+                return Some(session.id.clone());
+            }
         }
-    }
-
-    /// Zoom out to symphony view (Solo -> Symphony)
-    pub fn zoom_out(&mut self) {
-        self.view_mode = ViewMode::Symphony;
-        self.status_message = Some("Press 's' to spawn, Enter to zoom".to_string());
+        None
     }
 
     /// Poll all sessions to update their status
@@ -246,11 +223,6 @@ impl App {
                     let count = self.sessions.total_count();
                     if self.selected_index >= count && count > 0 {
                         self.selected_index = count - 1;
-                    }
-
-                    // Return to symphony view if we were in solo
-                    if matches!(self.view_mode, ViewMode::Solo(_)) {
-                        self.view_mode = ViewMode::Symphony;
                     }
                 }
             }

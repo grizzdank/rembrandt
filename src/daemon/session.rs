@@ -211,11 +211,24 @@ impl PtySession {
     }
 
     /// Read all buffered output as a string (lossy UTF-8 conversion)
+    /// Strips ANSI escape codes for clean display
     pub fn read_output(&self) -> String {
         if let Ok(guard) = self.output_buffer.lock() {
-            String::from_utf8_lossy(&guard.read_all()).to_string()
+            let raw = guard.read_all();
+            // Strip ANSI escape sequences for clean text display
+            let stripped = strip_ansi_escapes::strip(&raw);
+            String::from_utf8_lossy(&stripped).to_string()
         } else {
             String::new()
+        }
+    }
+
+    /// Read raw buffered output (with ANSI codes intact)
+    pub fn read_output_raw(&self) -> Vec<u8> {
+        if let Ok(guard) = self.output_buffer.lock() {
+            guard.read_all()
+        } else {
+            Vec::new()
         }
     }
 
