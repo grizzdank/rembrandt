@@ -182,14 +182,14 @@ fn render_solo(frame: &mut Frame, app: &App, session_idx: usize) {
         .wrap(Wrap { trim: false });
     frame.render_widget(output, chunks[1]);
 
-    // Status bar - show help, plus message if any
-    let help = "Esc: back │ n: nudge │ k: kill │ ?: help";
+    // Status bar - show attached mode and help
+    let help = "ATTACHED │ Esc: detach │ ?: help │ Keys → PTY";
     let status_text = match &app.status_message {
         Some(msg) => format!(" {} │ {} ", help, msg),
         None => format!(" {} ", help),
     };
     let status = Paragraph::new(status_text)
-        .style(Style::default().fg(Color::Black).bg(Color::Gray));
+        .style(Style::default().fg(Color::Black).bg(Color::Green));
     frame.render_widget(status, chunks[2]);
 }
 
@@ -255,21 +255,29 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
         ],
         ViewMode::Solo(_) => vec![
             Line::from(vec![
-                Span::styled("Solo View", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled("Solo View (Attached)", Style::default().add_modifier(Modifier::BOLD)),
             ]),
             Line::from(""),
             Line::from(vec![
-                Span::styled("Actions", Style::default().fg(Color::Yellow)),
+                Span::styled("Input Mode", Style::default().fg(Color::Green)),
             ]),
-            Line::from("  Esc     Return to Symphony view"),
-            Line::from("  n       Nudge agent"),
-            Line::from("  k/K     Kill agent"),
+            Line::from("  All keys are forwarded to the agent PTY"),
+            Line::from("  Type normally to interact with the agent"),
             Line::from(""),
             Line::from(vec![
-                Span::styled("General", Style::default().fg(Color::Yellow)),
+                Span::styled("Special Keys", Style::default().fg(Color::Yellow)),
             ]),
+            Line::from("  Esc     Detach (return to Symphony)"),
             Line::from("  ?       Toggle this help"),
-            Line::from("  Ctrl+Q  Quit"),
+            Line::from("  Ctrl+Q  Quit Rembrandt"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Supported Input", Style::default().fg(Color::Yellow)),
+            ]),
+            Line::from("  Letters, numbers, symbols"),
+            Line::from("  Arrow keys, Home/End, PgUp/PgDn"),
+            Line::from("  Enter, Tab, Backspace, Delete"),
+            Line::from("  Ctrl+A through Ctrl+Z"),
             Line::from(""),
             Line::from(vec![
                 Span::styled("Press any key to close", Style::default().fg(Color::DarkGray)),

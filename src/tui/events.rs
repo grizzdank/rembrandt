@@ -151,41 +151,111 @@ fn handle_symphony_key(app: &mut App, key: KeyEvent) -> crate::Result<()> {
     Ok(())
 }
 
-/// Handle keys in solo (zoom) mode
+/// Handle keys in solo (zoom) mode - forwards input to PTY
 fn handle_solo_key(app: &mut App, key: KeyEvent) -> crate::Result<()> {
+    // Special keys that we handle ourselves (not forwarded to PTY)
     match key.code {
-        // Zoom out
+        // Zoom out (detach from PTY)
         KeyCode::Esc => {
             app.zoom_out();
+            return Ok(());
         }
 
-        // Quit (with confirmation maybe?)
+        // Quit
         KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
+            return Ok(());
         }
 
-        // Help
-        KeyCode::Char('?') => {
+        // Help overlay
+        KeyCode::Char('?') if !key.modifiers.contains(KeyModifiers::SHIFT) => {
             app.toggle_help();
+            return Ok(());
         }
 
-        // Nudge
-        KeyCode::Char('n') => {
-            if let Err(e) = app.nudge_selected() {
-                app.status_message = Some(format!("Nudge failed: {}", e));
-            }
-        }
-
-        // Kill (with confirmation, then zoom out)
-        KeyCode::Char('k') | KeyCode::Char('K') => {
-            app.request_kill();
-            // Will zoom out after confirmation in confirm_action
-        }
-
-        // TODO: In full PTY passthrough mode, forward all other keys to the PTY
-        // For now, just ignore them
         _ => {}
     }
 
+    // Forward all other keys to the PTY
+    let bytes = key_to_bytes(key);
+    if !bytes.is_empty() {
+        if let Err(e) = app.write_to_session(&bytes) {
+            app.status_message = Some(format!("Write failed: {}", e));
+        }
+    }
+
     Ok(())
+}
+
+/// Convert a key event to bytes for PTY input
+fn key_to_bytes(key: KeyEvent) -> Vec<u8> {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
+
+    match key.code {
+        // Regular characters
+        KeyCode::Char(c) => {
+            if ctrl {
+                // Ctrl+letter produces control codes (Ctrl+A = 0x01, etc.)
+                if c.is_ascii_lowercase() {
+                    vec![(c as u8) - b'a' + 1]
+                } else if c.is_ascii_uppercase() {
+                    vec![(c.to_ascii_lowercase() as u8) - b'a' + 1]
+                } else {
+                    vec![]
+                }
+            } else if alt {
+                // Alt+key sends ESC followed by the key
+                let mut bytes = vec![0x1b];
+                bytes.extend(c.to_string().as_bytes());
+                bytes
+            } else {
+                c.to_string().into_bytes()
+            }
+        }
+
+        // Special keys
+        KeyCode::Enter => vec![b'\r'],
+        KeyCode::Tab => vec![b'\t'],
+        KeyCode::Backspace => vec![0x7f], // DEL
+        KeyCode::Delete => vec![0x1b, b'[', b'3', b'~'],
+
+        // Arrow keys (ANSI escape sequences)
+        KeyCode::Up => vec![0x1b, b'[', b'A'],
+        KeyCode::Down => vec![0x1b, b'[', b'B'],
+        KeyCode::Right => vec![0x1b, b'[', b'C'],
+        KeyCode::Left => vec![0x1b, b'[', b'D'],
+
+        // Home/End
+        KeyCode::Home => vec![0x1b, b'[', b'H'],
+        KeyCode::End => vec![0x1b, b'[', b'F'],
+
+        // Page Up/Down
+        KeyCode::PageUp => vec![0x1b, b'[', b'5', b'~'],
+        KeyCode::PageDown => vec![0x1b, b'[', b'6', b'~'],
+
+        // Insert
+        KeyCode::Insert => vec![0x1b, b'[', b'2', b'~'],
+
+        // Function keys
+        KeyCode::F(1) => vec![0x1b, b'O', b'P'],
+        KeyCode::F(2) => vec![0x1b, b'O', b'Q'],
+        KeyCode::F(3) => vec![0x1b, b'O', b'R'],
+        KeyCode::F(4) => vec![0x1b, b'O', b'S'],
+        KeyCode::F(5) => vec![0x1b, b'[', b'1', b'5', b'~'],
+        KeyCode::F(6) => vec![0x1b, b'[', b'1', b'7', b'~'],
+        KeyCode::F(7) => vec![0x1b, b'[', b'1', b'8', b'~'],
+        KeyCode::F(8) => vec![0x1b, b'[', b'1', b'9', b'~'],
+        KeyCode::F(9) => vec![0x1b, b'[', b'2', b'0', b'~'],
+        KeyCode::F(10) => vec![0x1b, b'[', b'2', b'1', b'~'],
+        KeyCode::F(11) => vec![0x1b, b'[', b'2', b'3', b'~'],
+        KeyCode::F(12) => vec![0x1b, b'[', b'2', b'4', b'~'],
+        KeyCode::F(_) => vec![],
+
+        // Escape itself
+        KeyCode::Esc => vec![0x1b],
+
+        // Ignore others
+        _ => vec![],
+    }
 }

@@ -109,6 +109,17 @@ impl App {
         self.sessions.read_output(session_id).unwrap_or_default()
     }
 
+    /// Write data to the currently viewed session's PTY
+    pub fn write_to_session(&mut self, data: &[u8]) -> crate::Result<()> {
+        if let ViewMode::Solo(idx) = self.view_mode {
+            let sessions = self.session_list();
+            if let Some(session) = sessions.get(idx) {
+                self.sessions.write(&session.id, data)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Select next session
     pub fn next_session(&mut self) {
         let count = self.sessions.total_count();
