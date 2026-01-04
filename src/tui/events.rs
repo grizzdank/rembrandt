@@ -11,8 +11,12 @@ pub fn handle_events(app: &mut App) -> crate::Result<bool> {
     // Poll for events with a timeout (allows periodic status updates)
     if event::poll(Duration::from_millis(100))? {
         if let Event::Key(key) = event::read()? {
-            // If there's a pending confirmation, handle y/n first
-            if app.has_pending_confirm() {
+            // Priority order: help overlay > spawn picker > confirmation > normal
+            if app.show_help {
+                handle_help_key(app, key)?;
+            } else if app.spawn_picker.is_some() {
+                handle_spawn_picker_key(app, key)?;
+            } else if app.has_pending_confirm() {
                 handle_confirm_key(app, key)?;
             } else {
                 match app.view_mode {
@@ -27,6 +31,46 @@ pub fn handle_events(app: &mut App) -> crate::Result<bool> {
     app.poll_sessions();
 
     Ok(!app.should_quit)
+}
+
+/// Handle keys when help overlay is showing
+fn handle_help_key(app: &mut App, key: KeyEvent) -> crate::Result<()> {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
+            app.show_help = false;
+        }
+        _ => {
+            // Any other key closes help
+            app.show_help = false;
+        }
+    }
+    Ok(())
+}
+
+/// Handle keys when spawn picker is showing
+fn handle_spawn_picker_key(app: &mut App, key: KeyEvent) -> crate::Result<()> {
+    match key.code {
+        KeyCode::Esc => {
+            app.close_spawn_picker();
+        }
+        KeyCode::Enter => {
+            if let Err(e) = app.confirm_spawn() {
+                app.status_message = Some(format!("Spawn failed: {}", e));
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if let Some(picker) = &mut app.spawn_picker {
+                picker.next();
+            }
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if let Some(picker) = &mut app.spawn_picker {
+                picker.prev();
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 /// Handle confirmation prompts (y/n)
@@ -56,6 +100,11 @@ fn handle_symphony_key(app: &mut App, key: KeyEvent) -> crate::Result<()> {
             app.should_quit = true;
         }
 
+        // Help
+        KeyCode::Char('?') => {
+            app.toggle_help();
+        }
+
         // Navigation
         KeyCode::Down | KeyCode::Char('j') => {
             app.next_session();
@@ -69,16 +118,9 @@ fn handle_symphony_key(app: &mut App, key: KeyEvent) -> crate::Result<()> {
             app.zoom_in();
         }
 
-        // Spawn new agent
+        // Spawn new agent (opens picker)
         KeyCode::Char('s') => {
-            // For MVP, spawn claude-code by default
-            // TODO: Show spawn dialog with agent selection
-            match app.spawn_agent("claude", None) {
-                Ok(_) => {}
-                Err(e) => {
-                    app.status_message = Some(format!("Spawn failed: {}", e));
-                }
-            }
+            app.open_spawn_picker();
         }
 
         // Kill selected (with confirmation)
@@ -120,6 +162,11 @@ fn handle_solo_key(app: &mut App, key: KeyEvent) -> crate::Result<()> {
         // Quit (with confirmation maybe?)
         KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
+        }
+
+        // Help
+        KeyCode::Char('?') => {
+            app.toggle_help();
         }
 
         // Nudge

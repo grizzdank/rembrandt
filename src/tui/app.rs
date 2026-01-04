@@ -5,11 +5,45 @@ use crate::daemon::{SessionInfo, SessionManager, SessionStatus};
 use crate::worktree::WorktreeManager;
 use std::path::PathBuf;
 
+/// Available agent types for spawning
+pub const AGENT_TYPES: &[(&str, &str)] = &[
+    ("claude", "Claude Code"),
+    ("opencode", "OpenCode"),
+    ("amp", "Amp Code"),
+    ("aider", "Aider"),
+    ("codex", "Codex CLI"),
+];
+
 /// Pending confirmation action
 #[derive(Debug, Clone)]
 pub enum PendingConfirm {
     /// Confirm kill of session (agent_id, session_id)
     Kill { agent_id: String, session_id: String },
+}
+
+/// Spawn picker state
+#[derive(Debug, Clone)]
+pub struct SpawnPicker {
+    /// Currently selected agent type index
+    pub selected: usize,
+}
+
+impl SpawnPicker {
+    pub fn new() -> Self {
+        Self { selected: 0 }
+    }
+
+    pub fn next(&mut self) {
+        self.selected = (self.selected + 1) % AGENT_TYPES.len();
+    }
+
+    pub fn prev(&mut self) {
+        self.selected = self.selected.checked_sub(1).unwrap_or(AGENT_TYPES.len() - 1);
+    }
+
+    pub fn selected_type(&self) -> &'static str {
+        AGENT_TYPES[self.selected].0
+    }
 }
 
 /// Main application state
@@ -30,6 +64,10 @@ pub struct App {
     pub repo_path: PathBuf,
     /// Pending confirmation (if any)
     pub pending_confirm: Option<PendingConfirm>,
+    /// Whether help overlay is showing
+    pub show_help: bool,
+    /// Spawn picker dialog (if active)
+    pub spawn_picker: Option<SpawnPicker>,
 }
 
 impl App {
@@ -47,9 +85,11 @@ impl App {
             worktrees,
             should_quit: false,
             selected_index: 0,
-            status_message: Some("Press 's' to spawn, 'q' to quit".to_string()),
+            status_message: Some("Press 's' to spawn, '?' for help".to_string()),
             repo_path,
             pending_confirm: None,
+            show_help: false,
+            spawn_picker: None,
         })
     }
 
@@ -223,5 +263,50 @@ impl App {
         let repo = Repository::open(&self.repo_path).ok()?;
         let head = repo.head().ok()?;
         head.shorthand().map(|s| s.to_string())
+    }
+
+    /// Toggle help overlay
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
+    }
+
+    /// Open spawn picker dialog
+    pub fn open_spawn_picker(&mut self) {
+        self.spawn_picker = Some(SpawnPicker::new());
+    }
+
+    /// Close spawn picker without spawning
+    pub fn close_spawn_picker(&mut self) {
+        self.spawn_picker = None;
+    }
+
+    /// Confirm spawn from picker
+    pub fn confirm_spawn(&mut self) -> crate::Result<()> {
+        if let Some(picker) = self.spawn_picker.take() {
+            let agent_type = picker.selected_type();
+            self.spawn_agent(agent_type, None)?;
+        }
+        Ok(())
+    }
+
+    /// Format duration as human-readable string
+    pub fn format_duration(duration: chrono::Duration) -> String {
+        let secs = duration.num_seconds();
+        if secs < 60 {
+            format!("{}s", secs)
+        } else if secs < 3600 {
+            format!("{}m", secs / 60)
+        } else if secs < 86400 {
+            let hours = secs / 3600;
+            let mins = (secs % 3600) / 60;
+            if mins > 0 {
+                format!("{}h {}m", hours, mins)
+            } else {
+                format!("{}h", hours)
+            }
+        } else {
+            let days = secs / 86400;
+            format!("{}d", days)
+        }
     }
 }

@@ -34,47 +34,74 @@ impl RingBuffer {
     /// Write data to the buffer
     ///
     /// If the data exceeds remaining capacity, older data is overwritten.
-    ///
-    /// # TODO: Implement this method
-    ///
-    /// Consider:
-    /// - What happens when data.len() > self.capacity? (larger than entire buffer)
-    /// - How do you handle wraparound at the end of the buffer?
-    /// - Should you update write_pos and total_written atomically?
     pub fn write(&mut self, data: &[u8]) {
-        // YOUR IMPLEMENTATION HERE
-        //
-        // Hints:
-        // 1. If data is larger than capacity, only keep the last `capacity` bytes
-        // 2. Handle the case where write wraps around the end of the buffer
-        // 3. Update write_pos and total_written appropriately
-        //
-        // Example approach:
-        // - If buffer isn't full yet (data.len() < capacity), just extend
-        // - If buffer is full, overwrite starting at write_pos
-        // - Handle wraparound when write_pos + data.len() > capacity
+        if data.is_empty() {
+            return;
+        }
 
-        todo!("Implement ring buffer write logic")
+        // If data is larger than capacity, only keep the last `capacity` bytes
+        let data = if data.len() > self.capacity {
+            &data[data.len() - self.capacity..]
+        } else {
+            data
+        };
+
+        // Ensure buffer is at full capacity for wraparound logic
+        if self.data.len() < self.capacity {
+            // Buffer not full yet - extend it
+            let space_left = self.capacity - self.data.len();
+            if data.len() <= space_left {
+                // Fits entirely in remaining space
+                self.data.extend_from_slice(data);
+                self.write_pos = self.data.len();
+            } else {
+                // Partially fits, need to start wrapping
+                self.data.extend_from_slice(&data[..space_left]);
+                // Now buffer is full, write rest at beginning
+                let remaining = &data[space_left..];
+                self.data[..remaining.len()].copy_from_slice(remaining);
+                self.write_pos = remaining.len();
+            }
+        } else {
+            // Buffer is full, use wraparound
+            let space_to_end = self.capacity - self.write_pos;
+            if data.len() <= space_to_end {
+                // Fits before end of buffer
+                self.data[self.write_pos..self.write_pos + data.len()].copy_from_slice(data);
+                self.write_pos += data.len();
+                if self.write_pos >= self.capacity {
+                    self.write_pos = 0;
+                }
+            } else {
+                // Need to wrap around
+                self.data[self.write_pos..].copy_from_slice(&data[..space_to_end]);
+                let remaining = &data[space_to_end..];
+                self.data[..remaining.len()].copy_from_slice(remaining);
+                self.write_pos = remaining.len();
+            }
+        }
+
+        self.total_written += data.len();
     }
 
     /// Read all available data from the buffer
     ///
     /// Returns data in chronological order (oldest first).
-    ///
-    /// # TODO: Implement this method
-    ///
-    /// Consider:
-    /// - If buffer hasn't wrapped, data is contiguous from 0..write_pos
-    /// - If buffer has wrapped, need to return write_pos..end + 0..write_pos
     pub fn read_all(&self) -> Vec<u8> {
-        // YOUR IMPLEMENTATION HERE
-        //
-        // Hints:
-        // 1. Check if buffer has wrapped (total_written > capacity)
-        // 2. If not wrapped: return data[0..write_pos]
-        // 3. If wrapped: return data[write_pos..] + data[0..write_pos]
+        if self.data.is_empty() {
+            return Vec::new();
+        }
 
-        todo!("Implement ring buffer read logic")
+        if !self.has_wrapped() {
+            // Buffer hasn't wrapped - data is contiguous from start
+            self.data[..self.write_pos].to_vec()
+        } else {
+            // Buffer has wrapped - oldest data is at write_pos
+            let mut result = Vec::with_capacity(self.capacity);
+            result.extend_from_slice(&self.data[self.write_pos..]);
+            result.extend_from_slice(&self.data[..self.write_pos]);
+            result
+        }
     }
 
     /// Get the number of bytes currently stored
