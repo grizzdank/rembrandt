@@ -1,44 +1,97 @@
-//! Terminal UI components
+//! Terminal UI for Rembrandt
 //!
-//! Provides the zoom in/out interface for agent orchestration.
+//! Provides the symphony/solo interface for agent orchestration.
+//! - Symphony view: see all agents at once (the orchestra)
+//! - Solo view: interact with a single agent (the soloist)
 
 mod app;
+mod events;
+mod render;
 
-pub use app::*;
+pub use app::App;
 
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use crossterm::{
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{backend::CrosstermBackend, Terminal};
+use std::io::{self, stdout};
+use std::path::PathBuf;
 
 /// View mode for the TUI
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
     /// Symphony view - see all agents at once (zoom out)
     Symphony,
-    /// Focus view - interact with a single agent (zoom in)
-    Focus(usize),
+    /// Solo view - interact with a single agent (zoom in)
+    Solo(usize),
 }
 
-/// Split the terminal into the main layout areas
-pub fn main_layout(area: Rect) -> Vec<Rect> {
-    Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(10),    // Main content
-            Constraint::Length(3),  // Status bar
-        ])
-        .split(area)
-        .to_vec()
+/// Run the TUI application
+pub fn run(repo_path: PathBuf) -> crate::Result<()> {
+    // Check if we have a proper TTY
+    use std::io::IsTerminal;
+    if !std::io::stdin().is_terminal() {
+        return Err(crate::RembrandtError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotConnected,
+            "Dashboard requires an interactive terminal. Run from a TTY, not a pipe or script.",
+        )));
+    }
+
+    // Create app state first (before messing with terminal)
+    let mut app = App::new(repo_path)?;
+
+    // Setup terminal
+    enable_raw_mode().map_err(|e| {
+        crate::RembrandtError::Io(std::io::Error::new(
+            e.kind(),
+            format!("Failed to enable raw mode: {}", e),
+        ))
+    })?;
+
+    let mut stdout = stdout();
+    if let Err(e) = execute!(stdout, EnterAlternateScreen) {
+        disable_raw_mode().ok();
+        return Err(crate::RembrandtError::Io(std::io::Error::new(
+            e.kind(),
+            format!("Failed to enter alternate screen: {}", e),
+        )));
+    }
+
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = match Terminal::new(backend) {
+        Ok(t) => t,
+        Err(e) => {
+            disable_raw_mode().ok();
+            return Err(e.into());
+        }
+    };
+
+    // Main loop
+    let result = run_loop(&mut terminal, &mut app);
+
+    // Restore terminal
+    disable_raw_mode().ok();
+    execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
+    terminal.show_cursor().ok();
+
+    result
 }
 
-/// Split the main content area for symphony view
-pub fn symphony_layout(area: Rect, agent_count: usize) -> Vec<Rect> {
-    let constraints: Vec<Constraint> = (0..agent_count)
-        .map(|_| Constraint::Ratio(1, agent_count as u32))
-        .collect();
+/// The main event loop
+fn run_loop(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+) -> crate::Result<()> {
+    loop {
+        // Render
+        terminal.draw(|frame| render::render(frame, app))?;
 
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(constraints)
-        .split(area)
-        .to_vec()
+        // Handle events
+        if !events::handle_events(app)? {
+            break;
+        }
+    }
+
+    Ok(())
 }

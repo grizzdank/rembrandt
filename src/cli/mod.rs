@@ -32,6 +32,57 @@ pub enum Commands {
         /// Base branch to create worktree from
         #[arg(short, long, default_value = "main")]
         branch: String,
+
+        /// Continue in existing worktree (agent-id from previous session)
+        #[arg(short = 'C', long)]
+        r#continue: Option<String>,
+
+        /// Initial prompt/task to send to the agent
+        #[arg(short, long)]
+        prompt: Option<String>,
+
+        /// Skip the interactive prompt for starting task
+        #[arg(long)]
+        no_prompt: bool,
+    },
+
+    /// Run agents in competition mode on the same task
+    Compete {
+        /// The prompt/task for all agents to work on
+        prompt: String,
+
+        /// Comma-separated list of agent types (e.g., claude-code,opencode,codex)
+        #[arg(short, long, value_delimiter = ',')]
+        agents: Vec<String>,
+
+        /// Evaluator strategy: metrics, model, human
+        #[arg(short, long, default_value = "metrics")]
+        evaluator: String,
+
+        /// Model name for model evaluator
+        #[arg(long, default_value = "claude-3-5-sonnet")]
+        model: String,
+
+        /// Timeout in minutes for agent completion
+        #[arg(short, long, default_value = "30")]
+        timeout: u64,
+
+        /// Base branch to create worktrees from
+        #[arg(short, long, default_value = "main")]
+        branch: String,
+    },
+
+    /// Show status of a competition
+    CompeteStatus {
+        /// Competition ID (or "latest" for most recent)
+        #[arg(default_value = "latest")]
+        id: String,
+    },
+
+    /// Cancel a running competition
+    CompeteCancel {
+        /// Competition ID
+        id: String,
     },
 
     /// List active agent sessions
@@ -78,6 +129,13 @@ pub enum Commands {
         /// Remove all worktrees (including active)
         #[arg(long)]
         all: bool,
+    },
+
+    /// Garbage collect orphaned worktrees (no active session)
+    Gc {
+        /// Dry run - show what would be cleaned without deleting
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Launch the TUI dashboard
