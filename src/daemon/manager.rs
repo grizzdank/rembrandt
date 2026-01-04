@@ -93,6 +93,11 @@ impl SessionManager {
         self.sessions.get_mut(id)
     }
 
+    /// Read buffered output from a session
+    pub fn read_output(&self, id: &str) -> Option<String> {
+        self.sessions.get(id).map(|s| s.read_output())
+    }
+
     /// Send a nudge to a session
     pub fn nudge(&mut self, id: &str) -> Result<()> {
         self.sessions

@@ -104,6 +104,11 @@ impl App {
         sessions.get(self.selected_index).cloned()
     }
 
+    /// Get PTY output for a session
+    pub fn session_output(&self, session_id: &str) -> String {
+        self.sessions.read_output(session_id).unwrap_or_default()
+    }
+
     /// Select next session
     pub fn next_session(&mut self) {
         let count = self.sessions.total_count();
@@ -166,6 +171,20 @@ impl App {
             &args,
             &worktree.path,
         )?;
+
+        // If we have an initial task/prompt, send it after a brief delay
+        // to let the agent start up
+        if let Some(prompt) = task {
+            // Send the prompt to the agent's stdin
+            // Add newline to submit the prompt
+            let prompt_with_newline = format!("{}\n", prompt);
+            // Small delay to let agent initialize (100ms)
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if let Err(e) = self.sessions.write(&session_id, prompt_with_newline.as_bytes()) {
+                self.status_message = Some(format!("Spawned {} but prompt failed: {}", agent_id, e));
+                return Ok(session_id);
+            }
+        }
 
         self.status_message = Some(format!("Spawned {} ({})", agent_id, session_id));
         Ok(session_id)

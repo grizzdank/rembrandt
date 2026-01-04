@@ -156,19 +156,30 @@ fn render_solo(frame: &mut Frame, app: &App, session_idx: usize) {
         .block(Block::default().borders(Borders::NONE));
     frame.render_widget(header, chunks[0]);
 
-    // PTY output area (placeholder - real implementation needs PTY reading)
-    // TODO: Read from session's output buffer and display
+    // PTY output area - display buffered output
     let output_block = Block::default()
         .title(format!(" {} ", session.workdir))
         .borders(Borders::ALL);
 
-    let output_text = format!(
-        "Agent: {}\nCommand: {}\nStatus: {:?}\n\n[PTY output will appear here once attach is implemented]",
-        session.agent_id, session.command, session.status
-    );
+    // Get the PTY output
+    let output_text = app.session_output(&session.id);
+    let output_text = if output_text.is_empty() {
+        format!(
+            "Agent: {}\nCommand: {}\nStatus: {:?}\n\n[Waiting for output...]",
+            session.agent_id, session.command, session.status
+        )
+    } else {
+        // Show the last N lines that fit in the view
+        // Keep last ~100 lines max for display
+        let lines: Vec<&str> = output_text.lines().collect();
+        let visible_lines = chunks[1].height.saturating_sub(2) as usize; // Account for borders
+        let start = lines.len().saturating_sub(visible_lines.max(100));
+        lines[start..].join("\n")
+    };
 
     let output = Paragraph::new(output_text)
-        .block(output_block);
+        .block(output_block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(output, chunks[1]);
 
     // Status bar - show help, plus message if any

@@ -9,7 +9,8 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::Mutex;
+use std::thread::{self, JoinHandle};
 
 use super::buffer::RingBuffer;
 
@@ -64,6 +65,8 @@ pub struct PtySession {
     pub command: String,
     /// Working directory
     pub workdir: String,
+    /// Background reader thread handle
+    _reader_handle: Option<JoinHandle<()>>,
 }
 
 impl PtySession {
@@ -112,18 +115,50 @@ impl PtySession {
             .take_writer()
             .map_err(|e| RembrandtError::Pty(e.to_string()))?;
 
+        // Create output buffer
+        let output_buffer = Arc::new(Mutex::new(RingBuffer::new(buffer_capacity)));
+
+        // Get a reader for the background thread
+        let reader = pair
+            .master
+            .try_clone_reader()
+            .map_err(|e| RembrandtError::Pty(e.to_string()))?;
+
+        // Spawn background reader thread to capture output
+        let buffer_clone = output_buffer.clone();
+        let reader_handle = thread::spawn(move || {
+            Self::reader_loop(reader, buffer_clone);
+        });
+
         Ok(Self {
             id: generate_session_id(),
             agent_id,
             master: pair.master,
             writer,
             child,
-            output_buffer: Arc::new(Mutex::new(RingBuffer::new(buffer_capacity))),
+            output_buffer,
             status: SessionStatus::Running,
             created_at: Utc::now(),
             command: command.to_string(),
             workdir: workdir.display().to_string(),
+            _reader_handle: Some(reader_handle),
         })
+    }
+
+    /// Background reader loop that captures PTY output
+    fn reader_loop(mut reader: Box<dyn Read + Send>, buffer: Arc<Mutex<RingBuffer>>) {
+        let mut buf = [0u8; 1024];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break, // EOF - PTY closed
+                Ok(n) => {
+                    if let Ok(mut guard) = buffer.lock() {
+                        guard.write(&buf[..n]);
+                    }
+                }
+                Err(_) => break, // Error - likely PTY closed
+            }
+        }
     }
 
     /// Write data to the PTY (agent's stdin)
@@ -173,6 +208,24 @@ impl PtySession {
     /// Get the output buffer for reading historical output
     pub fn output_buffer(&self) -> Arc<Mutex<RingBuffer>> {
         self.output_buffer.clone()
+    }
+
+    /// Read all buffered output as a string (lossy UTF-8 conversion)
+    pub fn read_output(&self) -> String {
+        if let Ok(guard) = self.output_buffer.lock() {
+            String::from_utf8_lossy(&guard.read_all()).to_string()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Get the number of bytes in the output buffer
+    pub fn output_len(&self) -> usize {
+        if let Ok(guard) = self.output_buffer.lock() {
+            guard.len()
+        } else {
+            0
+        }
     }
 
     /// Poll the child process status
