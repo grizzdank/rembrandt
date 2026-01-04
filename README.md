@@ -14,18 +14,23 @@ Run multiple AI coding agents simultaneously on the same codebase without them s
 # Initialize in your project
 rembrandt init
 
-# Spawn agents on different tasks
-rembrandt spawn claude-code --task BD-001
-rembrandt spawn opencode --task BD-002
+# Spawn an agent (interactive - prompts for starting task)
+rembrandt spawn claude
 
-# See all agents working
+# Spawn with an initial prompt
+rembrandt spawn claude --prompt "implement the login form"
+
+# Spawn from a specific branch
+rembrandt spawn opencode --branch feature/auth
+
+# Resume work in an existing worktree
+rembrandt spawn claude --continue claude-a1b2
+
+# Launch the TUI dashboard (Symphony/Solo views)
 rembrandt dashboard
 
-# Zoom into a specific agent
-rembrandt attach agent-1
-
-# Merge completed work
-rembrandt merge agent-1
+# Clean up orphaned worktrees
+rembrandt gc
 ```
 
 ## Architecture
@@ -73,13 +78,38 @@ project/
 |---------|-------------|
 | `rembrandt init` | Initialize in current repository |
 | `rembrandt spawn <agent>` | Spawn agent in new worktree |
+| `rembrandt dashboard` | Launch TUI (Symphony/Solo views) |
 | `rembrandt list` | List active agent sessions |
 | `rembrandt attach <id>` | Zoom into agent terminal |
 | `rembrandt broadcast <msg>` | Message all agents |
 | `rembrandt merge <id>` | Merge agent's work to main |
+| `rembrandt stop <id>` | Stop an agent session |
 | `rembrandt cleanup` | Remove completed worktrees |
-| `rembrandt dashboard` | Launch TUI |
+| `rembrandt gc` | Garbage collect orphaned worktrees |
 | `rembrandt status` | Show integration status |
+
+### Spawn Options
+
+| Flag | Description |
+|------|-------------|
+| `-p, --prompt <TEXT>` | Initial task to send to the agent |
+| `-C, --continue <ID>` | Resume in existing worktree |
+| `-t, --task <ID>` | Beads task ID to assign |
+| `-b, --branch <NAME>` | Base branch to fork from (default: main) |
+| `--no-prompt` | Skip interactive prompt |
+
+### TUI Keybindings
+
+| Key | Symphony View | Solo View |
+|-----|---------------|-----------|
+| `j/k` | Navigate sessions | - |
+| `Enter` | Zoom into session | - |
+| `Esc` | - | Return to Symphony |
+| `s` | Spawn new agent | - |
+| `n` | Nudge selected | Nudge agent |
+| `K` | Kill (with confirm) | Kill (with confirm) |
+| `c` | Cleanup completed | - |
+| `q` | Quit | - |
 
 ## Development
 
@@ -96,5 +126,6 @@ cargo test
 
 ## See Also
 
-- [Design Plan](../research-plans/rembrandt-plan.md)
+- [MVP Specification](docs/MVP.md)
+- [Architecture Decision (PTY + ACP Hybrid)](.pq/decisions/PQ-kwg.md)
 - [Agent Client Protocol (ACP)](https://agentclientprotocol.com/)
