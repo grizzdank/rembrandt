@@ -31,22 +31,23 @@ Running multiple agents simultaneously causes:
 ## Project Structure
 
 ```
-src/
+src/                    # Rust CLI/library
 ├── lib.rs              # Library entry, error types
 ├── main.rs             # CLI entry point
 ├── agent/              # Agent registry and session management
 │   ├── mod.rs          # Types: AgentType, AgentStatus, AgentSession
 │   └── registry.rs     # AgentRegistry implementation
+├── daemon/             # PTY session management
+│   ├── session.rs      # PtySession - PTY wrapper
+│   ├── manager.rs      # SessionManager - lifecycle
+│   └── buffer.rs       # Ring buffer for late-attach
 ├── competition/        # Competition mode (parallel eval, pick best)
-│   ├── mod.rs          # Types: CompetitionGroup, CompetitorSolution, EvaluatorStrategy
 │   ├── manager.rs      # CompetitionManager - lifecycle orchestration
 │   ├── evaluator.rs    # Evaluator trait + Metrics/Model/Human implementations
 │   └── validator.rs    # Solution validation (type check, tests)
 ├── worktree/           # Git worktree management
 │   └── mod.rs          # WorktreeManager
-├── tui/                # Terminal UI
-│   ├── mod.rs          # Layout helpers
-│   └── app.rs          # App state, view modes
+├── tui/                # Terminal UI (preserved on tui-ratatui-backup branch)
 ├── integration/        # External tool integrations
 │   ├── mod.rs          # Integration trait
 │   ├── beads.rs        # Beads task tracking
@@ -54,17 +55,36 @@ src/
 │   └── agent_mail.rs   # MCP Agent Mail
 └── cli/                # CLI command definitions
     └── mod.rs          # Clap commands
+
+gui/                    # Tauri desktop app (NEW - replacing TUI)
+├── src/                # Svelte frontend
+│   ├── lib/            # Components (Terminal, Dashboard, AgentList)
+│   └── App.svelte      # Main app
+├── src-tauri/          # Tauri Rust backend
+│   └── src/            # PTY session, manager, commands
+└── package.json        # Frontend dependencies (xterm.js, Tauri API)
 ```
 
 ## Current State
 
-This is an MVP scaffold. Key areas needing implementation:
+**Architecture pivot (2026-01-04):** Migrating from ratatui TUI to **Tauri + Svelte + xterm.js** GUI.
 
-1. **Agent spawning** - Actually spawn agent processes in worktrees
-2. **PTY management** - Attach/detach from agent terminals
-3. **TUI dashboard** - Full ratatui interface
-4. **Agent Mail MCP** - Real MCP client integration
-5. **Competition mode wiring** - Connect CompetitionManager to agent spawning
+The TUI "attach" mode had fundamental terminal-in-terminal issues (blank screens on attach, display corruption when switching agents). Rather than implementing a full terminal emulator (libghostty), we're pivoting to a GUI approach where each agent gets its own xterm.js terminal widget.
+
+**Completed:**
+- Git worktree management for agent isolation
+- PTY session management (portable-pty)
+- CLI commands: spawn, list, attach, merge, cleanup
+- Tauri scaffold with Svelte frontend
+- PTY session code migrated to Tauri backend
+
+**In Progress:**
+- Svelte frontend with xterm.js terminals
+- PTY output streaming via Tauri events
+
+**Preserved:**
+- TUI implementation saved on `tui-ratatui-backup` branch
+- Can revisit if libghostty becomes stable (expected 1.0 in ~6 months)
 
 ## Development Workflow
 
@@ -157,10 +177,11 @@ Focus: **Parallel execution without collision**
 - Conflict prediction
 - Porque integration
 
-### Phase 3: Full GUI
-- Tauri app with Symphony View
-- libghostty terminal embedding
+### Phase 3: Full GUI (IN PROGRESS)
+- Tauri + Svelte + xterm.js desktop app
+- Symphony view with multiple agent terminals
 - Real-time agent activity visualization
+- (libghostty option preserved on `tui-ratatui-backup` branch for future native TUI)
 
 ## MVP Commands (Target)
 
