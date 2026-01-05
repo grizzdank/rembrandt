@@ -10,7 +10,6 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::thread::{self, JoinHandle};
 
 use super::buffer::RingBuffer;
 
@@ -65,8 +64,11 @@ pub struct PtySession {
     pub command: String,
     /// Working directory
     pub workdir: String,
-    /// Background reader thread handle
-    _reader_handle: Option<JoinHandle<()>>,
+    /// PTY reader for on-demand output reading
+    reader: Option<Box<dyn Read + Send>>,
+    /// Raw file descriptor for polling (Unix only)
+    #[cfg(unix)]
+    reader_fd: Option<std::os::unix::io::RawFd>,
 }
 
 impl PtySession {
@@ -78,19 +80,23 @@ impl PtySession {
     /// * `args` - Command arguments
     /// * `workdir` - Working directory for the process
     /// * `buffer_capacity` - How many bytes of output to buffer for late-attach
+    /// * `rows` - Terminal rows (None for default 24)
+    /// * `cols` - Terminal columns (None for default 80)
     pub fn spawn(
         agent_id: String,
         command: &str,
         args: &[&str],
         workdir: &Path,
         buffer_capacity: usize,
+        rows: Option<u16>,
+        cols: Option<u16>,
     ) -> Result<Self> {
         let pty_system = native_pty_system();
 
-        // Default terminal size - can be resized later
+        // Use provided size or defaults
         let size = PtySize {
-            rows: 24,
-            cols: 80,
+            rows: rows.unwrap_or(24),
+            cols: cols.unwrap_or(80),
             pixel_width: 0,
             pixel_height: 0,
         };
@@ -118,17 +124,46 @@ impl PtySession {
         // Create output buffer
         let output_buffer = Arc::new(Mutex::new(RingBuffer::new(buffer_capacity)));
 
-        // Get a reader for the background thread
-        let reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|e| RembrandtError::Pty(e.to_string()))?;
+        // Create our own reader from a duplicated fd (so we control non-blocking mode)
+        #[cfg(unix)]
+        let (reader, reader_fd) = {
+            use std::os::unix::io::FromRawFd;
+            if let Some(master_fd) = pair.master.as_raw_fd() {
+                let fd = unsafe { libc::dup(master_fd) };
+                if fd >= 0 {
+                    // Set non-blocking for polling
+                    unsafe {
+                        let flags = libc::fcntl(fd, libc::F_GETFL);
+                        libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                    }
+                    let file = unsafe { std::fs::File::from_raw_fd(fd) };
+                    (Some(Box::new(file) as Box<dyn Read + Send>), Some(fd))
+                } else {
+                    // dup failed - fallback to portable_pty's reader
+                    let reader = pair
+                        .master
+                        .try_clone_reader()
+                        .map_err(|e| RembrandtError::Pty(e.to_string()))?;
+                    (Some(reader), None)
+                }
+            } else {
+                // No fd available - fallback to portable_pty's reader
+                let reader = pair
+                    .master
+                    .try_clone_reader()
+                    .map_err(|e| RembrandtError::Pty(e.to_string()))?;
+                (Some(reader), None)
+            }
+        };
 
-        // Spawn background reader thread to capture output
-        let buffer_clone = output_buffer.clone();
-        let reader_handle = thread::spawn(move || {
-            Self::reader_loop(reader, buffer_clone);
-        });
+        #[cfg(not(unix))]
+        let (reader, reader_fd) = {
+            let reader = pair
+                .master
+                .try_clone_reader()
+                .map_err(|e| RembrandtError::Pty(e.to_string()))?;
+            (Some(reader), None::<i32>)
+        };
 
         Ok(Self {
             id: generate_session_id(),
@@ -141,24 +176,54 @@ impl PtySession {
             created_at: Utc::now(),
             command: command.to_string(),
             workdir: workdir.display().to_string(),
-            _reader_handle: Some(reader_handle),
+            reader,
+            #[cfg(unix)]
+            reader_fd,
         })
     }
 
-    /// Background reader loop that captures PTY output
-    fn reader_loop(mut reader: Box<dyn Read + Send>, buffer: Arc<Mutex<RingBuffer>>) {
-        let mut buf = [0u8; 1024];
+    /// Read available PTY output into the buffer (non-blocking)
+    ///
+    /// Call this periodically from the TUI event loop to capture output.
+    /// Returns the number of bytes read, or 0 if nothing available.
+    pub fn read_available(&mut self) -> usize {
+        let reader = match self.reader.as_mut() {
+            Some(r) => r,
+            None => return 0,
+        };
+
+        let mut total = 0;
+        let mut buf = [0u8; 4096];
+
+        // Read until WouldBlock (drain available data)
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break, // EOF - PTY closed
                 Ok(n) => {
-                    if let Ok(mut guard) = buffer.lock() {
+                    if let Ok(mut guard) = self.output_buffer.lock() {
                         guard.write(&buf[..n]);
                     }
+                    total += n;
                 }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(_) => break, // Error - likely PTY closed
             }
         }
+
+        total
+    }
+
+    /// Take the PTY reader for exclusive access (used by attach)
+    ///
+    /// After calling this, read_available() will no longer work.
+    /// The reader should be returned via return_reader() when done.
+    pub fn take_reader(&mut self) -> Option<Box<dyn Read + Send>> {
+        self.reader.take()
+    }
+
+    /// Return the PTY reader after exclusive access is done
+    pub fn return_reader(&mut self, reader: Box<dyn Read + Send>) {
+        self.reader = Some(reader);
     }
 
     /// Write data to the PTY (agent's stdin)
@@ -193,6 +258,21 @@ impl PtySession {
             })
             .map_err(|e| RembrandtError::Pty(e.to_string()))?;
         Ok(())
+    }
+
+    /// Send SIGWINCH to the child process to force a redraw
+    #[cfg(unix)]
+    pub fn send_sigwinch(&self) {
+        if let Some(pid) = self.child.process_id() {
+            unsafe {
+                libc::kill(pid as i32, libc::SIGWINCH);
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    pub fn send_sigwinch(&self) {
+        // No-op on non-Unix
     }
 
     /// Get a reader for the PTY output

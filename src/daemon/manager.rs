@@ -71,12 +71,29 @@ impl SessionManager {
         args: &[&str],
         workdir: &Path,
     ) -> Result<SessionId> {
+        self.spawn_with_size(agent_id, command, args, workdir, None, None)
+    }
+
+    /// Spawn a new agent session with specific terminal size
+    ///
+    /// Returns the session ID on success.
+    pub fn spawn_with_size(
+        &mut self,
+        agent_id: String,
+        command: &str,
+        args: &[&str],
+        workdir: &Path,
+        rows: Option<u16>,
+        cols: Option<u16>,
+    ) -> Result<SessionId> {
         let session = PtySession::spawn(
             agent_id,
             command,
             args,
             workdir,
             self.buffer_capacity,
+            rows,
+            cols,
         )?;
         let id = session.id.clone();
         self.sessions.insert(id.clone(), session);
@@ -147,6 +164,15 @@ impl SessionManager {
     pub fn poll_all(&mut self) {
         for session in self.sessions.values_mut() {
             session.poll();
+        }
+    }
+
+    /// Read available PTY output from all sessions into their buffers
+    ///
+    /// Call this periodically from the TUI event loop.
+    pub fn read_all_available(&mut self) {
+        for session in self.sessions.values_mut() {
+            session.read_available();
         }
     }
 

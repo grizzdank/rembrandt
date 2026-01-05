@@ -71,9 +71,14 @@ pub fn run(repo_path: PathBuf) -> crate::Result<()> {
     // Main loop
     let result = run_loop(&mut terminal, &mut app);
 
-    // Restore terminal
+    // Restore terminal - disable mouse capture in case an attached agent enabled it
     disable_raw_mode().ok();
-    execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
+    execute!(
+        terminal.backend_mut(),
+        crossterm::event::DisableMouseCapture,
+        LeaveAlternateScreen
+    )
+    .ok();
     terminal.show_cursor().ok();
 
     result
@@ -85,6 +90,12 @@ fn run_loop(
     app: &mut App,
 ) -> crate::Result<()> {
     loop {
+        // Check if terminal needs clearing (after attach/detach)
+        if app.needs_clear {
+            terminal.clear()?;
+            app.needs_clear = false;
+        }
+
         // Render
         terminal.draw(|frame| render::render(frame, app))?;
 

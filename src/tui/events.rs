@@ -110,10 +110,29 @@ fn handle_symphony_key(app: &mut App, key: KeyEvent) -> crate::Result<()> {
             app.prev_session();
         }
 
-        // Attach to session (WIP - PTY refactor needed)
+        // Attach to selected session
         KeyCode::Enter => {
-            if app.sessions.total_count() > 0 {
-                app.status_message = Some("Attach coming soon (PTY refactor needed)".to_string());
+            if let Some(session) = app.selected_session() {
+                if session.status == crate::daemon::SessionStatus::Running {
+                    match super::attach::attach_to_session(&mut app.sessions, &session.id) {
+                        Ok(super::attach::AttachResult::Detached) => {
+                            app.status_message = Some("Detached from session".to_string());
+                        }
+                        Ok(super::attach::AttachResult::SessionEnded) => {
+                            app.status_message = Some("Session ended".to_string());
+                        }
+                        Ok(super::attach::AttachResult::Error(e)) => {
+                            app.status_message = Some(format!("Attach error: {}", e));
+                        }
+                        Err(e) => {
+                            app.status_message = Some(format!("Failed to attach: {}", e));
+                        }
+                    }
+                    // Request terminal clear after returning from attach
+                    app.needs_clear = true;
+                } else {
+                    app.status_message = Some("Cannot attach to non-running session".to_string());
+                }
             }
         }
 

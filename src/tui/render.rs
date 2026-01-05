@@ -173,7 +173,8 @@ fn render_help_overlay(frame: &mut Frame, _app: &App) {
         Line::from(vec![
             Span::styled("When Attached", Style::default().fg(Color::Cyan)),
         ]),
-        Line::from("  Ctrl+]  Detach (return to dashboard)"),
+        Line::from("  Ctrl+] or Ctrl+\\  Detach (return to dashboard)"),
+        Line::from("  Esc Esc (quick)   Detach (universal fallback)"),
         Line::from("  All other keys go directly to agent"),
         Line::from(""),
         Line::from(vec![

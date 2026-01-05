@@ -65,6 +65,8 @@ pub struct App {
     pub show_help: bool,
     /// Spawn picker dialog (if active)
     pub spawn_picker: Option<SpawnPicker>,
+    /// Flag to request terminal clear (after attach/detach)
+    pub needs_clear: bool,
 }
 
 impl App {
@@ -86,6 +88,7 @@ impl App {
             pending_confirm: None,
             show_help: false,
             spawn_picker: None,
+            needs_clear: false,
         })
     }
 
@@ -127,8 +130,9 @@ impl App {
         None
     }
 
-    /// Poll all sessions to update their status
+    /// Poll all sessions to update their status and read available output
     pub fn poll_sessions(&mut self) {
+        self.sessions.read_all_available();
         self.sessions.poll_all();
     }
 
@@ -152,12 +156,17 @@ impl App {
         let command = agent.command();
         let args = agent.default_args();
 
-        // Spawn PTY session
-        let session_id = self.sessions.spawn(
+        // Get actual terminal size
+        let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+
+        // Spawn PTY session with actual terminal size
+        let session_id = self.sessions.spawn_with_size(
             agent_id.clone(),
             command,
             &args,
             &worktree.path,
+            Some(rows),
+            Some(cols),
         )?;
 
         // If we have an initial task/prompt, send it after a brief delay
@@ -203,8 +212,8 @@ impl App {
         if let Some(confirm) = self.pending_confirm.take() {
             match confirm {
                 PendingConfirm::Kill { agent_id, session_id } => {
-                    // Kill the PTY session
-                    self.sessions.kill(&session_id)?;
+                    // Kill the PTY session (ignore errors - session may already be dead)
+                    let _ = self.sessions.kill(&session_id);
 
                     // Remove from session manager
                     self.sessions.remove(&session_id);
@@ -212,11 +221,11 @@ impl App {
                     // Cleanup the worktree
                     if let Err(e) = self.worktrees.remove_worktree(&agent_id) {
                         self.status_message = Some(format!(
-                            "Killed {} (worktree cleanup failed: {})",
+                            "Removed {} (worktree cleanup failed: {})",
                             agent_id, e
                         ));
                     } else {
-                        self.status_message = Some(format!("Killed {} + cleaned worktree", agent_id));
+                        self.status_message = Some(format!("Removed {} + cleaned worktree", agent_id));
                     }
 
                     // Adjust selected index if needed

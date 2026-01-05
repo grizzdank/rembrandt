@@ -99,13 +99,16 @@ fn main() -> Result<()> {
             println!("  Command:  {}", command);
             println!();
 
-            // Spawn the agent in a PTY
+            // Spawn the agent in a PTY with current terminal size
+            let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
             let mut session = PtySession::spawn(
                 agent_id.clone(),
                 command,
                 &args,
                 &worktree_path,
                 10 * 1024, // 10KB output buffer
+                Some(rows),
+                Some(cols),
             )?;
 
             println!("Agent spawned with session ID: {}", session.id);
