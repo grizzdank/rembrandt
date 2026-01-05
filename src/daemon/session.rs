@@ -260,12 +260,13 @@ impl PtySession {
         Ok(())
     }
 
-    /// Send SIGWINCH to the child process to force a redraw
+    /// Send SIGWINCH to the child process group to force a redraw
     #[cfg(unix)]
     pub fn send_sigwinch(&self) {
         if let Some(pid) = self.child.process_id() {
             unsafe {
-                libc::kill(pid as i32, libc::SIGWINCH);
+                // Send to process group (negative pid) to reach all child processes
+                libc::kill(-(pid as i32), libc::SIGWINCH);
             }
         }
     }

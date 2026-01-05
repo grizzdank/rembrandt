@@ -41,29 +41,29 @@ pub fn attach_to_session(
     // Get current terminal size
     let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
 
-    // Take the reader - we get exclusive access
+    // Take EXCLUSIVE reader access - no competing readers
     let pty_reader = session.take_reader().ok_or_else(|| {
-        crate::RembrandtError::Pty("PTY reader not available (already attached?)".to_string())
+        crate::RembrandtError::Pty("Reader not available".to_string())
     })?;
 
-    // Leave alternate screen so PTY output shows directly
+    // Leave alternate screen for direct PTY access
     execute!(io::stdout(), LeaveAlternateScreen).ok();
     io::stdout().flush().ok();
 
-    // Small delay then send SIGWINCH to force app redraw
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    // Resize and signal the app to redraw
     session.resize(rows, cols).ok();
     session.send_sigwinch();
+
+    // Brief pause to let the app respond to SIGWINCH
+    std::thread::sleep(std::time::Duration::from_millis(100));
 
     // Run the attach loop
     let result = run_attach_loop(sessions, session_id, pty_reader);
 
-    // Disable mouse capture that the agent may have enabled
-    execute!(io::stdout(), crossterm::event::DisableMouseCapture).ok();
-
-    // Re-enter alternate screen and clear it for TUI
+    // Disable mouse capture, re-enter alternate screen for TUI
     execute!(
         io::stdout(),
+        crossterm::event::DisableMouseCapture,
         EnterAlternateScreen,
         crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
         crossterm::cursor::MoveTo(0, 0)
@@ -71,10 +71,9 @@ pub fn attach_to_session(
     .ok();
     io::stdout().flush().ok();
 
-    // Handle result - return reader and extract attach result
+    // Return reader to session and extract result
     match result {
         Ok((reader, attach_result)) => {
-            // Return the reader to the session (if it still exists)
             if let Some(session) = sessions.get_mut(session_id) {
                 session.return_reader(reader);
             }
