@@ -4,6 +4,12 @@
 
 Orchestration layer for coding agents (Claude Code, OpenCode, AmpCode, Codex, etc.) that enables **parallel execution without collision**.
 
+## Status
+
+**In Development** - Migrating to Tauri + Svelte + xterm.js GUI.
+
+The CLI commands work. The GUI is being built to provide a desktop app where each agent gets its own terminal widget.
+
 ## Vision
 
 Run multiple AI coding agents simultaneously on the same codebase without them stepping on each other. Zoom out to see the symphony, zoom in to conduct any agent.
@@ -11,6 +17,9 @@ Run multiple AI coding agents simultaneously on the same codebase without them s
 ## Quick Start
 
 ```bash
+# Build the CLI
+cargo build --release
+
 # Initialize in your project
 rembrandt init
 
@@ -23,29 +32,38 @@ rembrandt spawn claude --prompt "implement the login form"
 # Spawn from a specific branch
 rembrandt spawn opencode --branch feature/auth
 
-# Resume work in an existing worktree
-rembrandt spawn claude --continue claude-a1b2
-
-# Launch the TUI dashboard (Symphony/Solo views)
-rembrandt dashboard
+# List active sessions
+rembrandt list
 
 # Clean up orphaned worktrees
 rembrandt gc
+```
+
+### GUI (In Development)
+
+```bash
+cd gui
+npm install
+npm run tauri dev
 ```
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     REMBRANDT                               │
-│  ┌───────────────┐  ┌─────────────┐  ┌──────────────────┐  │
-│  │ Symphony View │  │ Focus View  │  │ Context Panel    │  │
-│  │ (Zoom Out)    │◄─►│ (Zoom In)  │◄─►│ (Beads+Porque)  │  │
-│  └───────────────┘  └─────────────┘  └──────────────────┘  │
+│              REMBRANDT GUI (Tauri + Svelte)                 │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │  Agent Sidebar  │  xterm.js Terminal Widgets           ││
+│  │  - Agent list   │  - One terminal per agent            ││
+│  │  - Status       │  - Full TUI support                  ││
+│  │  - Controls     │  - Late-attach with history          ││
+│  └─────────────────────────────────────────────────────────┘│
 ├─────────────────────────────────────────────────────────────┤
-│  Agent Registry │ Worktree Manager │ Task Router           │
+│                  TAURI RUST BACKEND                         │
+│  PTY Sessions │ Session Manager │ Worktree Manager         │
 ├─────────────────────────────────────────────────────────────┤
-│  Agent Mail │ Beads Integration │ Porque Integration       │
+│                  INTEGRATION LAYER                          │
+│  Beads (tasks) │ Porque (decisions) │ Agent Mail (comms)   │
 ├─────────────────────────────────────────────────────────────┤
 │  Claude Code │ OpenCode │ AmpCode │ Codex │ Aider          │
 └─────────────────────────────────────────────────────────────┘
@@ -98,30 +116,20 @@ project/
 | `-b, --branch <NAME>` | Base branch to fork from (default: main) |
 | `--no-prompt` | Skip interactive prompt |
 
-### TUI Keybindings
-
-| Key | Symphony View | Solo View |
-|-----|---------------|-----------|
-| `j/k` | Navigate sessions | - |
-| `Enter` | Zoom into session | - |
-| `Esc` | - | Return to Symphony |
-| `s` | Spawn new agent | - |
-| `n` | Nudge selected | Nudge agent |
-| `K` | Kill (with confirm) | Kill (with confirm) |
-| `c` | Cleanup completed | - |
-| `q` | Quit | - |
-
 ## Development
 
 ```bash
-# Build
+# Build CLI
 cargo build
 
-# Run
+# Run CLI
 cargo run -- status
 
 # Test
 cargo test
+
+# Run GUI (in development)
+cd gui && npm run tauri dev
 ```
 
 ## See Also

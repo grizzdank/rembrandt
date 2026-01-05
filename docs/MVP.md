@@ -1,7 +1,9 @@
 # Rembrandt MVP Specification
 
-**Last updated:** 2026-01-03
-**Status:** Draft based on Q&A refinement
+**Last updated:** 2026-01-04
+**Status:** In development - pivoted to Tauri GUI
+
+**Architecture Note (2026-01-04):** Original TUI approach had terminal-in-terminal issues with attach mode. Pivoting to Tauri + Svelte + xterm.js desktop app. TUI preserved on `tui-ratatui-backup` branch.
 
 ## Vision
 
@@ -15,11 +17,11 @@ Rembrandt is an orchestration layer for coding agents - enabling parallel execut
 
 ## Core Architecture
 
-| Layer | Responsibility | Protocol |
-|-------|----------------|----------|
-| **Rembrandt Daemon** | Lifecycle, monitoring, coordination | PTY for process control |
+| Layer | Responsibility | Technology |
+|-------|----------------|------------|
+| **Tauri Backend** | PTY sessions, lifecycle, coordination | Rust + portable-pty |
 | **Agents** | Model harness (Claude Code, OpenCode, etc.) | ACP for conversation |
-| **TUI** | Visibility, control | Connects to daemon |
+| **GUI Frontend** | Visibility, control, terminal widgets | Svelte + xterm.js |
 
 ### Three Interaction Modes
 
@@ -69,43 +71,33 @@ Rembrandt is an orchestration layer for coding agents - enabling parallel execut
 - **Persist**: Full session log written to file (`~/.rembrandt/logs/{session-id}.log`)
 - **Parse** (future): Extract structured events (tool calls, errors, commits)
 
-## TUI Design
+## GUI Design
 
-### Overview Mode (Default)
-
-```
-┌─ Rembrandt ──────────────────────────────────────────────┐
-│                                                          │
-│  Agent         Task              Status      Preview     │
-│  ────────────────────────────────────────────────────────│
-│▶ claude-a3f    rembrandt-jds     ● active    editing... │
-│  opencode-b7x  rembrandt-z7r     ○ idle      waiting... │
-│  claude-c2k    rembrandt-8nv     ✗ blocked   need help  │
-│                                                          │
-│  ────────────────────────────────────────────────────────│
-│  ! claude-c2k needs attention: "Can't find config file" │
-│  ────────────────────────────────────────────────────────│
-│                                                          │
-│  [Enter] Zoom  [B]roadcast  [K]ill  [S]pawn  [Q]uit     │
-└──────────────────────────────────────────────────────────┘
-```
-
-### Zoom Mode (Apprentice)
+### Dashboard Layout
 
 ```
-┌─ claude-a3f ─────────────────────────────────────────────┐
-│                                                          │
-│  $ claude                                                │
-│  > Working on auth module...                             │
-│  > Reading src/auth/middleware.rs                        │
-│  > [full PTY passthrough - you type directly here]       │
-│                                                          │
-│                                                          │
-│                                                          │
-│  ────────────────────────────────────────────────────────│
-│  [Esc] Back to Overview  [Ctrl+K] Kill  [Ctrl+B] Broadcast│
-└──────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  Rembrandt                                              [_][□][×]   │
+├─────────────┬───────────────────────────────────────────────────────┤
+│             │                                                       │
+│  AGENTS     │   ┌─ claude-a3f ──────────────────────────────────┐  │
+│             │   │ $ claude                                       │  │
+│  ● claude-  │   │ > Working on auth module...                    │  │
+│    a3f      │   │ > Reading src/auth/middleware.rs               │  │
+│             │   │ > _                                            │  │
+│  ○ opencode │   │                                                │  │
+│    b7x      │   └────────────────────────────────────────────────┘  │
+│             │                                                       │
+│  ✗ claude-  │   ┌─ opencode-b7x ────────────────────────────────┐  │
+│    c2k      │   │ $ opencode                                     │  │
+│             │   │ > Idle, waiting for input...                   │  │
+│  ──────────│   │                                                │  │
+│  [+ Spawn] │   └────────────────────────────────────────────────┘  │
+│             │                                                       │
+└─────────────┴───────────────────────────────────────────────────────┘
 ```
+
+Each agent gets its own xterm.js terminal widget. Click to focus, type directly.
 
 ## Task Binding (Beads Integration)
 
@@ -155,7 +147,7 @@ Rembrandt is an orchestration layer for coding agents - enabling parallel execut
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    rembrandt daemon                      │
+│                TAURI RUST BACKEND                        │
 │  ┌─────────────────────────────────────────────────────┐│
 │  │  SessionManager                                     ││
 │  │  ├── PtySession (claude-a3f)                       ││
@@ -163,19 +155,22 @@ Rembrandt is an orchestration layer for coding agents - enabling parallel execut
 │  │  └── PtySession (claude-c2k)                       ││
 │  └─────────────────────────────────────────────────────┘│
 │  ┌─────────────────────────────────────────────────────┐│
-│  │  LogManager (writes to ~/.rembrandt/logs/)          ││
+│  │  WorktreeManager (git worktrees per agent)          ││
 │  └─────────────────────────────────────────────────────┘│
 │  ┌─────────────────────────────────────────────────────┐│
-│  │  ConflictTracker (file reservations)                ││
+│  │  Tauri Commands (spawn, kill, write, resize, etc.)  ││
 │  └─────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────┘
-          ▲                    ▲
-          │ unix socket        │ unix socket
-          │                    │
-    ┌─────┴─────┐        ┌─────┴─────┐
-    │  TUI      │        │  CLI      │
-    │  (ratatui)│        │  (clap)   │
-    └───────────┘        └───────────┘
+          ▲
+          │ Tauri IPC
+          │
+┌─────────┴─────────────────────────────────────────────┐
+│              SVELTE FRONTEND                           │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐      │
+│  │ xterm.js   │  │ xterm.js   │  │ xterm.js   │      │
+│  │ Agent 1    │  │ Agent 2    │  │ Agent 3    │      │
+│  └────────────┘  └────────────┘  └────────────┘      │
+└───────────────────────────────────────────────────────┘
 ```
 
 ## Future Vision (Post-MVP)
