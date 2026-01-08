@@ -33,7 +33,9 @@ fn spawn_agent(
 /// List all agents
 #[tauri::command]
 fn list_agents(state: State<AppState>) -> Result<Vec<SessionInfo>, String> {
-    let sessions = state.sessions.lock().map_err(|e| e.to_string())?;
+    let mut sessions = state.sessions.lock().map_err(|e| e.to_string())?;
+    // Poll all sessions to update their status (detect exits)
+    sessions.poll_all();
     Ok(sessions.list())
 }
 
@@ -58,8 +60,11 @@ fn write_to_agent(
     session_id: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
+    println!("write_to_agent: session={} data={:?}", session_id, data);
     let mut sessions = state.sessions.lock().map_err(|e| e.to_string())?;
-    sessions.write(&session_id, &data).map_err(|e| e.to_string())
+    let result = sessions.write(&session_id, &data).map_err(|e| e.to_string());
+    println!("write_to_agent: result={:?}", result);
+    result
 }
 
 /// Resize an agent's PTY
@@ -79,7 +84,7 @@ fn resize_agent(
 /// Get output history for an agent
 #[tauri::command]
 fn get_history(state: State<AppState>, session_id: String) -> Result<Vec<u8>, String> {
-    let sessions = state.sessions.lock().map_err(|e| e.to_string())?;
+    let mut sessions = state.sessions.lock().map_err(|e| e.to_string())?;
     sessions.get_history(&session_id).map_err(|e| e.to_string())
 }
 

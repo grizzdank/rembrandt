@@ -3,7 +3,6 @@
 use super::{AgentSession, AgentStatus, AgentType};
 use crate::{RembrandtError, Result};
 use std::collections::HashMap;
-use std::path::Path;
 
 /// Registry of available agent configurations and active sessions
 pub struct AgentRegistry {
