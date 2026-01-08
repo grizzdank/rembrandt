@@ -106,8 +106,8 @@
 
   .agent-card.active {
     background: #4a3f38;
-    border-color: #c9a227;
-    box-shadow: 0 0 0 1px #c9a227;
+    border-color: #cc7722;
+    box-shadow: 0 0 0 1px #cc7722;
   }
 
   .header {

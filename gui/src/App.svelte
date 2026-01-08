@@ -288,11 +288,11 @@
     margin: 0;
     font-size: 18px;
     font-weight: 600;
-    color: #c9a227;
+    color: #cc7722;
   }
 
   .spawn-btn {
-    background: #c9a227;
+    background: #cc7722;
     color: #1c1a17;
     border: none;
     padding: 8px 12px;
@@ -304,7 +304,7 @@
   }
 
   .spawn-btn:hover {
-    background: #dbb842;
+    background: #dd8833;
   }
 
   .sessions-list {
@@ -389,7 +389,7 @@
     margin: 0 0 20px 0;
     font-size: 18px;
     font-weight: 600;
-    color: #c9a227;
+    color: #cc7722;
   }
 
   .dialog .form-fields {
@@ -420,7 +420,7 @@
 
   .dialog input:focus {
     outline: none;
-    border-color: #c9a227;
+    border-color: #cc7722;
   }
 
   .dialog-actions {
@@ -450,13 +450,13 @@
   }
 
   .dialog-actions button.primary {
-    background: #c9a227;
+    background: #cc7722;
     border: none;
     color: #1c1a17;
   }
 
   .dialog-actions button.primary:hover:not(:disabled) {
-    background: #dbb842;
+    background: #dd8833;
   }
 
   .dialog-actions button:disabled {
