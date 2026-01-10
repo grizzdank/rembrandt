@@ -324,7 +324,7 @@ impl CompetitionManager {
         // Stop all agents
         for competitor in &competition.competitors {
             if let Some(_session) = registry.get_session(&competitor.agent_id) {
-                registry.update_status(&competitor.agent_id, AgentStatus::Stopped);
+                let _ = registry.update_status(&competitor.agent_id, AgentStatus::Stopped);
                 // TODO: Actually kill the agent process
             }
         }

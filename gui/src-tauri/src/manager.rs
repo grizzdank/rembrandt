@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Default output buffer size (10KB per session)
-const DEFAULT_BUFFER_CAPACITY: usize = 10 * 1024;
+/// Default output buffer size (256KB per session)
+/// Claude Code can output significant content, especially during startup
+const DEFAULT_BUFFER_CAPACITY: usize = 256 * 1024;
 
 /// Summary of a session for the frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +21,14 @@ pub struct SessionInfo {
     pub workdir: String,
     pub status: SessionStatus,
     pub created_at: String,
+    /// Git branch this agent is working on (if using worktree isolation)
+    pub branch: Option<String>,
+    /// Whether this session is using an isolated worktree
+    pub isolated: bool,
+    /// Beads task ID assigned to this session
+    pub task_id: Option<String>,
+    /// Beads task title (for display)
+    pub task_title: Option<String>,
 }
 
 impl From<&PtySession> for SessionInfo {
@@ -31,8 +40,21 @@ impl From<&PtySession> for SessionInfo {
             workdir: session.workdir.clone(),
             status: session.status.clone(),
             created_at: session.created_at.to_rfc3339(),
+            branch: session.branch.clone(),
+            isolated: session.isolated,
+            task_id: session.task_id.clone(),
+            task_title: session.task_title.clone(),
         }
     }
+}
+
+/// Information about a session that just exited
+#[derive(Debug, Clone)]
+pub struct ExitedSession {
+    pub session_id: SessionId,
+    pub agent_id: String,
+    pub task_id: Option<String>,
+    pub exit_code: i32,
 }
 
 /// Manages all active PTY sessions
@@ -58,6 +80,10 @@ impl SessionManager {
         workdir: &Path,
         rows: Option<u16>,
         cols: Option<u16>,
+        branch: Option<String>,
+        isolated: bool,
+        task_id: Option<String>,
+        task_title: Option<String>,
     ) -> Result<SessionId> {
         let session = PtySession::spawn(
             agent_id,
@@ -67,6 +93,10 @@ impl SessionManager {
             self.buffer_capacity,
             rows,
             cols,
+            branch,
+            isolated,
+            task_id,
+            task_title,
         )?;
         let id = session.id.clone();
         self.sessions.insert(id.clone(), session);
@@ -103,7 +133,14 @@ impl SessionManager {
     }
 
     /// Get output history for a session
-    pub fn get_history(&self, id: &str) -> Result<Vec<u8>> {
+    ///
+    /// This also reads any new output from the PTY into the buffer first.
+    pub fn get_history(&mut self, id: &str) -> Result<Vec<u8>> {
+        // First, read any available output from the PTY into the buffer
+        if let Some(session) = self.sessions.get_mut(id) {
+            session.read_available();
+        }
+
         self.sessions
             .get(id)
             .ok_or_else(|| AppError::SessionNotFound(id.to_string()))
@@ -124,10 +161,32 @@ impl SessionManager {
     }
 
     /// Poll all sessions and update their status
-    pub fn poll_all(&mut self) {
+    /// Returns sessions that just transitioned from Running to Exited
+    pub fn poll_all(&mut self) -> Vec<ExitedSession> {
+        let mut newly_exited = Vec::new();
+
         for session in self.sessions.values_mut() {
+            let was_running = session.is_running();
             session.poll();
+
+            // Check if this session just exited
+            if was_running && !session.is_running() {
+                let exit_code = match &session.status {
+                    crate::session::SessionStatus::Exited(code) => *code,
+                    crate::session::SessionStatus::Failed(_) => -1,
+                    _ => 0,
+                };
+
+                newly_exited.push(ExitedSession {
+                    session_id: session.id.clone(),
+                    agent_id: session.agent_id.clone(),
+                    task_id: session.task_id.clone(),
+                    exit_code,
+                });
+            }
         }
+
+        newly_exited
     }
 
     /// Read available PTY output from all sessions
