@@ -246,7 +246,7 @@ impl Default for HumanEvaluator {
 impl Evaluator for HumanEvaluator {
     async fn evaluate(
         &self,
-        prompt: &str,
+        _prompt: &str,
         solutions: &[&CompetitorSolution],
         _repo_path: &Path,
     ) -> Result<EvaluationResult> {
