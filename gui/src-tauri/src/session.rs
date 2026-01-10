@@ -60,6 +60,10 @@ pub struct PtySession {
     pub workdir: String,
     /// PTY reader for on-demand output reading
     reader: Option<Box<dyn Read + Send>>,
+    /// Git branch this session is working on (if using worktree isolation)
+    pub branch: Option<String>,
+    /// Whether this session is using an isolated worktree
+    pub isolated: bool,
 }
 
 impl PtySession {
@@ -72,6 +76,8 @@ impl PtySession {
         buffer_capacity: usize,
         rows: Option<u16>,
         cols: Option<u16>,
+        branch: Option<String>,
+        isolated: bool,
     ) -> Result<Self> {
         let pty_system = native_pty_system();
 
@@ -148,6 +154,8 @@ impl PtySession {
             command: command.to_string(),
             workdir: workdir.display().to_string(),
             reader,
+            branch,
+            isolated,
         })
     }
 

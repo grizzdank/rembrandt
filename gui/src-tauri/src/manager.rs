@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Default output buffer size (10KB per session)
-const DEFAULT_BUFFER_CAPACITY: usize = 10 * 1024;
+/// Default output buffer size (256KB per session)
+/// Claude Code can output significant content, especially during startup
+const DEFAULT_BUFFER_CAPACITY: usize = 256 * 1024;
 
 /// Summary of a session for the frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +21,10 @@ pub struct SessionInfo {
     pub workdir: String,
     pub status: SessionStatus,
     pub created_at: String,
+    /// Git branch this agent is working on (if using worktree isolation)
+    pub branch: Option<String>,
+    /// Whether this session is using an isolated worktree
+    pub isolated: bool,
 }
 
 impl From<&PtySession> for SessionInfo {
@@ -31,6 +36,8 @@ impl From<&PtySession> for SessionInfo {
             workdir: session.workdir.clone(),
             status: session.status.clone(),
             created_at: session.created_at.to_rfc3339(),
+            branch: session.branch.clone(),
+            isolated: session.isolated,
         }
     }
 }
@@ -58,6 +65,8 @@ impl SessionManager {
         workdir: &Path,
         rows: Option<u16>,
         cols: Option<u16>,
+        branch: Option<String>,
+        isolated: bool,
     ) -> Result<SessionId> {
         let session = PtySession::spawn(
             agent_id,
@@ -67,6 +76,8 @@ impl SessionManager {
             self.buffer_capacity,
             rows,
             cols,
+            branch,
+            isolated,
         )?;
         let id = session.id.clone();
         self.sessions.insert(id.clone(), session);
@@ -103,7 +114,14 @@ impl SessionManager {
     }
 
     /// Get output history for a session
-    pub fn get_history(&self, id: &str) -> Result<Vec<u8>> {
+    ///
+    /// This also reads any new output from the PTY into the buffer first.
+    pub fn get_history(&mut self, id: &str) -> Result<Vec<u8>> {
+        // First, read any available output from the PTY into the buffer
+        if let Some(session) = self.sessions.get_mut(id) {
+            session.read_available();
+        }
+
         self.sessions
             .get(id)
             .ok_or_else(|| AppError::SessionNotFound(id.to_string()))
