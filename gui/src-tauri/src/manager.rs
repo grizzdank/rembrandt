@@ -8,9 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Default output buffer size (256KB per session)
-/// Claude Code can output significant content, especially during startup
-const DEFAULT_BUFFER_CAPACITY: usize = 256 * 1024;
+/// Default output buffer size (10KB per session)
+const DEFAULT_BUFFER_CAPACITY: usize = 10 * 1024;
 
 /// Summary of a session for the frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,14 +103,7 @@ impl SessionManager {
     }
 
     /// Get output history for a session
-    ///
-    /// This also reads any new output from the PTY into the buffer first.
-    pub fn get_history(&mut self, id: &str) -> Result<Vec<u8>> {
-        // First, read any available output from the PTY into the buffer
-        if let Some(session) = self.sessions.get_mut(id) {
-            session.read_available();
-        }
-
+    pub fn get_history(&self, id: &str) -> Result<Vec<u8>> {
         self.sessions
             .get(id)
             .ok_or_else(|| AppError::SessionNotFound(id.to_string()))
