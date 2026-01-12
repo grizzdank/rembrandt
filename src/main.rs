@@ -26,7 +26,7 @@ fn main() -> Result<()> {
             println!("Created {}", manager.rembrandt_dir().display());
         }
 
-        Commands::Spawn { agent, task, branch, r#continue: continue_id, prompt, no_prompt, shell } => {
+        Commands::Spawn { agent, task, branch, r#continue: continue_id, prompt, no_prompt } => {
             let wt_manager = WorktreeManager::new(&repo_path)?;
 
             // Determine worktree: continue existing or create new
@@ -56,18 +56,9 @@ fn main() -> Result<()> {
                 let suffix: String = (0..4)
                     .map(|_| format!("{:x}", rand::random::<u8>() % 16))
                     .collect();
-                let agent_name = if shell {
-                    "shell"
-                } else {
-                    agent.as_ref().expect("agent required when --shell not provided")
-                };
-                let agent_id = format!("{}-{}", agent_name, suffix);
+                let agent_id = format!("{}-{}", agent, suffix);
 
-                if shell {
-                    println!("Spawning shell as '{}'...", agent_id);
-                } else {
-                    println!("Spawning {} agent as '{}'...", agent_name, agent_id);
-                }
+                println!("Spawning {} agent as '{}'...", agent, agent_id);
 
                 // Create worktree
                 let worktree = wt_manager.create_worktree(&agent_id, &branch)?;
@@ -100,33 +91,20 @@ fn main() -> Result<()> {
                 }
             };
 
-            // Resolve command and args: shell or agent
-            let (command, args) = if shell {
-                // Spawn shell from $SHELL or fallback to /bin/sh
-                let shell_path = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-                (shell_path, Vec::<String>::new())
-            } else {
-                // Resolve agent type to command
-                let agent_name = agent.as_ref().expect("agent required when --shell not provided");
-                let agent_type = AgentType::from_str(agent_name);
-                let command = agent_type.command().to_string();
-                let args = agent_type.default_args().iter().map(|s| s.to_string()).collect();
-                (command, args)
-            };
+            // Resolve agent type to command
+            let agent_type = AgentType::from_str(&agent);
+            let command = agent_type.command();
+            let args = agent_type.default_args();
 
             println!("  Command:  {}", command);
             println!();
 
             // Spawn the agent in a PTY with current terminal size
             let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
-
-            // Convert Vec<String> to Vec<&str> for PtySession::spawn
-            let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
             let mut session = PtySession::spawn(
                 agent_id.clone(),
-                &command,
-                &args_refs,
+                command,
+                &args,
                 &worktree_path,
                 10 * 1024, // 10KB output buffer
                 Some(rows),
@@ -232,19 +210,10 @@ fn main() -> Result<()> {
 
             println!("\n{}", "─".repeat(60));
             if session.is_running() {
-                if shell {
-                    println!("Detached. Shell still running in {}", worktree_path.display());
-                    println!("Resume with: rembrandt spawn --shell -C {}", agent_id);
-                } else {
-                    println!("Detached. Agent still running in {}", worktree_path.display());
-                    println!("Resume with: rembrandt spawn {} -C {}", agent.as_ref().unwrap(), agent_id);
-                }
+                println!("Detached. Agent still running in {}", worktree_path.display());
+                println!("Resume with: rembrandt spawn {} -C {}", agent, agent_id);
             } else {
-                if shell {
-                    println!("Shell exited: {:?}", session.status);
-                } else {
-                    println!("Agent exited: {:?}", session.status);
-                }
+                println!("Agent exited: {:?}", session.status);
             }
         }
 
