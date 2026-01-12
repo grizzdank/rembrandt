@@ -2,7 +2,7 @@
 //!
 //! Creates and manages isolated worktrees for each agent session.
 
-use crate::Result;
+use crate::{RembrandtError, Result};
 use git2::Repository;
 use std::path::{Path, PathBuf};
 

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 /// Integration with MCP Agent Mail
 pub struct AgentMailIntegration {
     /// Base URL for Agent Mail server
-    _server_url: Option<String>,
+    server_url: Option<String>,
     available: bool,
 }
 
@@ -16,14 +16,14 @@ impl AgentMailIntegration {
     pub fn new() -> Self {
         // TODO: Check for Agent Mail MCP server availability
         Self {
-            _server_url: None,
+            server_url: None,
             available: false,
         }
     }
 
     pub fn with_server(url: &str) -> Self {
         Self {
-            _server_url: Some(url.to_string()),
+            server_url: Some(url.to_string()),
             available: true,
         }
     }
@@ -40,25 +40,25 @@ impl AgentMailIntegration {
     }
 
     /// Release file reservations
-    pub fn release_reservation(&self, _reservation_id: &str) -> Result<()> {
+    pub fn release_reservation(&self, reservation_id: &str) -> Result<()> {
         // TODO: Implement via MCP
         Ok(())
     }
 
     /// Send a message to another agent
-    pub fn send_message(&self, _from: &str, _to: &str, _content: &str) -> Result<()> {
+    pub fn send_message(&self, from: &str, to: &str, content: &str) -> Result<()> {
         // TODO: Implement via MCP
         Ok(())
     }
 
     /// Broadcast a message to all agents
-    pub fn broadcast(&self, _from: &str, _content: &str) -> Result<()> {
+    pub fn broadcast(&self, from: &str, content: &str) -> Result<()> {
         // TODO: Implement via MCP
         Ok(())
     }
 
     /// Check for new messages
-    pub fn check_messages(&self, _agent_id: &str) -> Result<Vec<Message>> {
+    pub fn check_messages(&self, agent_id: &str) -> Result<Vec<Message>> {
         // TODO: Implement via MCP
         Ok(vec![])
     }

@@ -23,8 +23,7 @@ pub enum Commands {
     /// Spawn a new agent in an isolated worktree
     Spawn {
         /// Agent type (claude-code, opencode, codex, aider)
-        #[arg(required_unless_present = "shell")]
-        agent: Option<String>,
+        agent: String,
 
         /// Optional task ID from Beads to assign
         #[arg(short, long)]
@@ -45,10 +44,6 @@ pub enum Commands {
         /// Skip the interactive prompt for starting task
         #[arg(long)]
         no_prompt: bool,
-
-        /// Spawn a plain shell instead of an agent
-        #[arg(long)]
-        shell: bool,
     },
 
     /// Run agents in competition mode on the same task
