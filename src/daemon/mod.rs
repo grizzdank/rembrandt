@@ -29,11 +29,13 @@
 
 pub mod buffer;
 pub mod ipc;
+pub mod logger;
 pub mod manager;
 pub mod session;
 
 pub use buffer::RingBuffer;
 pub use ipc::{DaemonCommand, DaemonEvent, DaemonResponse};
+pub use logger::SessionLogger;
 pub use manager::{SessionInfo, SessionManager};
 pub use session::{PtySession, SessionId, SessionStatus};
 
@@ -114,8 +116,8 @@ impl Daemon {
 /// - How to handle multiple attached clients to same session
 /// - Error handling and recovery
 async fn handle_client(
-    stream: UnixStream,
-    manager: Arc<Mutex<SessionManager>>,
+    _stream: UnixStream,
+    _manager: Arc<Mutex<SessionManager>>,
 ) -> Result<()> {
     // YOUR IMPLEMENTATION HERE
     //
