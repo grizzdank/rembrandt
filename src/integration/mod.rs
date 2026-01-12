@@ -6,8 +6,6 @@ pub mod agent_mail;
 pub mod beads;
 pub mod porque;
 
-use crate::Result;
-
 /// Trait for external tool integrations
 pub trait Integration {
     /// Check if the integration is available

@@ -87,7 +87,7 @@ project/
 ## Integrations
 
 - **[Beads](https://github.com/steveyegge/beads)** - Task tracking (`bd ready`, `bd sync`)
-- **[Porque](https://github.com/grizzdank/porque)** - ADR context (`pq context`, `pq check`)
+- **[Porque](https://github.com/davegraham/porque)** - ADR context (`pq context`, `pq check`)
 - **[Agent Mail](https://github.com/Dicklesworthstone/mcp_agent_mail)** - Inter-agent communication
 
 ## Commands
