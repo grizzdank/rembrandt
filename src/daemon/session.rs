@@ -12,7 +12,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use super::buffer::RingBuffer;
-use super::logger::SessionLogger;
 
 /// Unique session identifier
 pub type SessionId = String;
@@ -69,9 +68,7 @@ pub struct PtySession {
     reader: Option<Box<dyn Read + Send>>,
     /// Raw file descriptor for polling (Unix only)
     #[cfg(unix)]
-    _reader_fd: Option<std::os::unix::io::RawFd>,
-    /// Persistent log file writer (optional, best-effort)
-    logger: Option<SessionLogger>,
+    reader_fd: Option<std::os::unix::io::RawFd>,
 }
 
 impl PtySession {
@@ -168,19 +165,8 @@ impl PtySession {
             (Some(reader), None::<i32>)
         };
 
-        let session_id = generate_session_id();
-
-        // Initialize persistent logger (best-effort, don't fail session if logging fails)
-        let logger = match SessionLogger::new(&session_id) {
-            Ok(l) => Some(l),
-            Err(e) => {
-                tracing::warn!("Failed to create session logger for {}: {}", session_id, e);
-                None
-            }
-        };
-
         Ok(Self {
-            id: session_id,
+            id: generate_session_id(),
             agent_id,
             master: pair.master,
             writer,
@@ -192,17 +178,13 @@ impl PtySession {
             workdir: workdir.display().to_string(),
             reader,
             #[cfg(unix)]
-            _reader_fd: reader_fd,
-            logger,
+            reader_fd,
         })
     }
 
     /// Read available PTY output into the buffer (non-blocking)
     ///
     /// Call this periodically from the TUI event loop to capture output.
-    /// Output is written to both the in-memory ring buffer (for late-attach)
-    /// and the persistent log file (for post-mortem analysis).
-    ///
     /// Returns the number of bytes read, or 0 if nothing available.
     pub fn read_available(&mut self) -> usize {
         let reader = match self.reader.as_mut() {
@@ -218,32 +200,13 @@ impl PtySession {
             match reader.read(&mut buf) {
                 Ok(0) => break, // EOF - PTY closed
                 Ok(n) => {
-                    let data = &buf[..n];
-
-                    // Write to in-memory ring buffer (for late-attach)
                     if let Ok(mut guard) = self.output_buffer.lock() {
-                        guard.write(data);
+                        guard.write(&buf[..n]);
                     }
-
-                    // Write to persistent log file (best-effort)
-                    if let Some(ref mut logger) = self.logger {
-                        if let Err(e) = logger.write(data) {
-                            tracing::warn!("Failed to write to session log: {}", e);
-                            // Don't disable logger on transient errors
-                        }
-                    }
-
                     total += n;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(_) => break, // Error - likely PTY closed
-            }
-        }
-
-        // Periodically flush the log file to ensure data is persisted
-        if total > 0 {
-            if let Some(ref mut logger) = self.logger {
-                let _ = logger.flush();
             }
         }
 
@@ -395,22 +358,6 @@ impl PtySession {
     /// Check if the session is still running
     pub fn is_running(&self) -> bool {
         self.status == SessionStatus::Running
-    }
-
-    /// Get the path to this session's log file
-    ///
-    /// Returns None if logging is disabled or initialization failed.
-    pub fn log_path(&self) -> Option<std::path::PathBuf> {
-        if self.logger.is_some() {
-            super::logger::log_path_for_session(&self.id).ok()
-        } else {
-            None
-        }
-    }
-
-    /// Get bytes written to the persistent log
-    pub fn log_bytes_written(&self) -> usize {
-        self.logger.as_ref().map(|l| l.bytes_written()).unwrap_or(0)
     }
 }
 

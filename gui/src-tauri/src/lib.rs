@@ -5,8 +5,6 @@
 pub mod buffer;
 pub mod session;
 pub mod manager;
-pub mod worktree;
-pub mod beads;
 
 use thiserror::Error;
 
