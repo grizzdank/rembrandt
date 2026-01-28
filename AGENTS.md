@@ -7,6 +7,7 @@
 Rembrandt is an orchestration layer for coding agents. It manages parallel execution of multiple AI coding agents (Claude Code, OpenCode, Codex, etc.) on the same codebase without conflicts.
 
 **Differentiation from prior art** (Claude Squad, Uzi, Cursor 2.0):
+
 - Integration layer with Beads (tasks), Porque (decisions), Agent Mail (messaging)
 - Zoom in/out UI paradigm (symphony view ↔ single agent focus)
 - ACP protocol for heterogeneous agent support
@@ -14,6 +15,7 @@ Rembrandt is an orchestration layer for coding agents. It manages parallel execu
 ## Core Problem Solved
 
 Running multiple agents simultaneously causes:
+
 1. **File conflicts** - Two agents editing the same file
 2. **Semantic conflicts** - Agent A's change breaks Agent B's assumptions
 3. **Git conflicts** - Merging concurrent branches
@@ -24,7 +26,7 @@ Running multiple agents simultaneously causes:
 
 - **Git Worktrees**: Each agent runs in an isolated worktree with its own branch
 - **Agent Registry**: Tracks active agent sessions and their status
-- **Integrations**: Connects with Beads (tasks), Porque (decisions), Agent Mail (messaging)
+- **Integrations**: Connects with Beads-rust (tasks), Porque (decisions), Agent Mail (messaging)
 - **Zoom In/Out**: UI paradigm - symphony view (all agents) vs focus view (single agent)
 - **ACP**: Agent Client Protocol - like LSP but for spawning/managing agents
 
@@ -72,6 +74,7 @@ gui/                    # Tauri desktop app (NEW - replacing TUI)
 The TUI "attach" mode had fundamental terminal-in-terminal issues (blank screens on attach, display corruption when switching agents). Rather than implementing a full terminal emulator (libghostty), we're pivoting to a GUI approach where each agent gets its own xterm.js terminal widget.
 
 **Completed:**
+
 - Git worktree management for agent isolation
 - PTY session management (portable-pty)
 - CLI commands: spawn, list, attach, merge, cleanup
@@ -79,27 +82,30 @@ The TUI "attach" mode had fundamental terminal-in-terminal issues (blank screens
 - PTY session code migrated to Tauri backend
 
 **In Progress:**
+
 - Svelte frontend with xterm.js terminals
 - PTY output streaming via Tauri events
 
 **Preserved:**
+
 - TUI implementation saved on `tui-ratatui-backup` branch
 - Can revisit if libghostty becomes stable (expected 1.0 in ~6 months)
 
 ## Development Workflow
 
 1. Check `rembrandt status` to see integration availability
-2. Use Beads for task tracking: `bd ready`, `bd update`, `bd sync`
+2. Use Beads-rust for task tracking: `br ready`, `br update`, `br sync`
 3. Keep changes focused - one feature at a time
 4. Test with `cargo test` and `cargo run -- <command>`
 
 ## Landing the Plane
 
 Before ending a session:
+
 1. Ensure all changes compile: `cargo build`
-2. Update any Beads issues: `bd update <id> --status <status>`
+2. Update any Beads issues: `br update <id> --status <status>`
 3. Commit changes with clear message
-4. Sync: `bd sync`
+4. Sync: `br sync`
 5. Push to remote
 
 ## Key Dependencies
@@ -116,10 +122,10 @@ Before ending a session:
 |-------|----------|---------|
 | Agent Control | ACP (Zed) | Spawn agents, send prompts, receive outputs |
 | Agent-to-Agent | MCP Agent Mail | File reservations, inter-agent messaging |
-| Task Tracking | Beads CLI | `bd ready`, `bd sync` - Go binary |
+| Task Tracking | Beads-rust CLI | `br ready`, `br sync` - Rust binary |
 | Decision Context | Porque CLI | `pq context`, `pq check` - Rust binary |
 
-**Note**: Beads and Porque are standalone CLIs, not MCP servers. Agent Mail is the MCP layer.
+**Note**: Beads-rust and Porque are standalone CLIs, not MCP servers. Agent Mail is the MCP layer.
 
 ## Resolved Decisions
 
@@ -142,8 +148,8 @@ Before ending a session:
    - Marginal value vs complexity for <10 agents
    - Hub relay is sufficient; revisit if bottleneck emerges
 
-6. **Beads/Rembrandt boundary**: Clear separation
-   - Beads = task graph (WHAT needs to be done)
+6. **Beads-rust/Rembrandt boundary**: Clear separation
+   - Beads-rust = task graph (WHAT needs to be done)
    - Rembrandt = execution engine (WHO does it, WHERE, HOW to merge)
 
 7. **Human review**: Conflicts only
@@ -152,7 +158,7 @@ Before ending a session:
 
 8. **Merge timing**: Continuous
    - Merge each agent's work as they complete
-   - Respect Beads dependency order
+   - Respect Beads-rust dependency order
 
 9. **Merge mechanics**: `git merge --no-commit`
    - Only finalize commit if all validation passes
@@ -166,18 +172,22 @@ Before ending a session:
 ## Phase Roadmap
 
 ### Phase 1: MVP (Current)
+
 Focus: **Parallel execution without collision**
+
 - Agent Registry + Worktree Manager
 - Agent Mail integration (file reservations)
 - Simple TUI (list agents, spawn, attach, merge)
 
 ### Phase 2: Intelligence Layer
+
 - Auto task decomposition (supervisor agent)
 - Capability-based routing
 - Conflict prediction
 - Porque integration
 
 ### Phase 3: Full GUI (IN PROGRESS)
+
 - Tauri + Svelte + xterm.js desktop app
 - Symphony view with multiple agent terminals
 - Real-time agent activity visualization
