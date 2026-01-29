@@ -1,0 +1,82 @@
+# openprose-rembrandt-parallel.prose
+#
+# Purpose
+# - A starter OpenProse “score” that matches Rembrandt’s parallel-apprentice mental model.
+# - Think of this as the “sheet music” for a multi-agent coding run.
+#
+# Notes
+# - In a true Rembrandt integration, each session would map to a worktree-bound agent.
+# - The merge gate is intentionally strict.
+
+vars:
+  task: "Implement login flow with tests"
+  base_branch: "main"
+  repo_root: "."
+  test_command: "cargo test"  # swap as needed
+
+agent architect:
+  model: opus
+  skills: ["filesystem"]
+
+agent api:
+  model: opus
+  skills: ["filesystem", "shell"]
+
+agent ui:
+  model: opus
+  skills: ["filesystem", "shell"]
+
+agent tests:
+  model: sonnet
+  skills: ["filesystem", "shell"]
+
+agent gatekeeper:
+  model: sonnet
+  skills: ["shell", "filesystem"]
+
+# Optional: a brief decomposition pass
+session: architect
+prompt: |
+  Decompose the task into 2–4 parallel workstreams that can be done independently.
+  Keep boundaries crisp to reduce merge conflicts.
+  Output: short bullets for API/UI/Tests/Docs.
+
+parallel:
+
+  api_work = session: api
+  prompt: |
+    Workstream: API/backend for: {{task}}
+    - Keep changes scoped.
+    - Prefer small commits.
+    - Leave a short summary of touched files + assumptions.
+
+  ui_work = session: ui
+  prompt: |
+    Workstream: UI/frontend for: {{task}}
+    - Prioritize accessibility + clear error states.
+    - Leave a short summary of touched files + assumptions.
+
+  test_work = session: tests
+  prompt: |
+    Workstream: automated tests for: {{task}}
+    - Add regression tests that fail before and pass after.
+    - Leave a short summary of what’s covered.
+
+# Merge gate / conductor step (should run in a clean integration workspace)
+session: gatekeeper
+prompt: |
+  Merge-gate checks before integrating work:
+  1) Run {{test_command}}
+  2) Verify scope is clean (no drive-by refactors)
+  3) Summarize risks + manual verification steps
+  4) If anything fails, list minimum fixes needed before merge
+
+if **tests pass and scope is clean**:
+  session: gatekeeper
+  prompt: |
+    Provide merge order and conflict-minimizing strategy (which branch/worktree first).
+else:
+  session: gatekeeper
+  prompt: |
+    Do NOT merge.
+    Provide a fix plan and assign the fixes back to the appropriate workstream.
