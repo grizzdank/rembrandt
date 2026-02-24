@@ -1,4 +1,4 @@
-//! Beads integration - task tracking via `bd` CLI
+//! Beads-rust integration - task tracking via `br` CLI
 
 use super::Integration;
 use crate::Result;
@@ -11,7 +11,7 @@ pub struct BeadsIntegration {
 
 impl BeadsIntegration {
     pub fn new() -> Self {
-        let available = Command::new("bd")
+        let available = Command::new("br")
             .arg("--version")
             .output()
             .map(|o| o.status.success())
@@ -26,7 +26,7 @@ impl BeadsIntegration {
             return Ok(vec![]);
         }
 
-        let output = Command::new("bd")
+        let output = Command::new("br")
             .args(["ready", "--json"])
             .output()?;
 
@@ -45,7 +45,7 @@ impl BeadsIntegration {
             return Ok(());
         }
 
-        Command::new("bd")
+        Command::new("br")
             .args(["update", task_id, "--status", status])
             .output()?;
 
@@ -58,7 +58,7 @@ impl BeadsIntegration {
             return Ok(());
         }
 
-        Command::new("bd")
+        Command::new("br")
             .arg("sync")
             .output()?;
 

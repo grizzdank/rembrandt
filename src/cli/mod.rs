@@ -13,6 +13,10 @@ pub struct Cli {
     /// Path to the repository (defaults to current directory)
     #[arg(short, long, global = true)]
     pub repo: Option<PathBuf>,
+
+    /// Use v2 orchestration paths for commands that support it
+    #[arg(long, global = true)]
+    pub v2: bool,
 }
 
 #[derive(Subcommand)]

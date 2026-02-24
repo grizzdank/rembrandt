@@ -6,8 +6,13 @@
 pub mod agent;
 pub mod cli;
 pub mod competition;
+pub mod config;
 pub mod daemon;
+pub mod isolation;
 pub mod integration;
+pub mod orchestrator;
+pub mod runtime;
+pub mod state;
 pub mod tui;
 pub mod worktree;
 
@@ -41,6 +46,21 @@ pub enum RembrandtError {
 
     #[error("Daemon error: {0}")]
     Daemon(String),
+
+    #[error("Runtime error: {0}")]
+    Runtime(String),
+
+    #[error("Orchestrator error: {0}")]
+    Orchestrator(String),
+
+    #[error("State error: {0}")]
+    State(String),
+
+    #[error("Isolation error: {0}")]
+    Isolation(String),
+
+    #[error("Configuration error: {0}")]
+    Config(String),
 
     #[error("Session not found: {0}")]
     SessionNotFound(String),

@@ -3,6 +3,7 @@ use clap::Parser;
 use rembrandt::agent::AgentType;
 use rembrandt::cli::{Cli, Commands};
 use rembrandt::daemon::session::PtySession;
+use rembrandt::runtime::AgentRuntime;
 use rembrandt::worktree::WorktreeManager;
 use std::io::Read;
 use std::path::PathBuf;
@@ -17,6 +18,7 @@ fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+    let use_v2 = cli.v2;
     let repo_path = cli.repo.unwrap_or_else(|| PathBuf::from("."));
 
     match cli.command {
@@ -276,6 +278,47 @@ fn main() -> Result<()> {
         }
 
         Commands::List { verbose } => {
+            if use_v2 {
+                let orch = rembrandt::orchestrator::Orchestrator::new(
+                    &repo_path,
+                    rembrandt::runtime::PiRuntime::new(),
+                )?;
+                let sessions = orch.list_agents()?;
+                println!("V2 sessions (state.db):");
+                if sessions.is_empty() {
+                    println!("  (none)");
+                } else {
+                    for session in &sessions {
+                        println!(
+                            "  {} [{}] {} {}",
+                            session.agent_id,
+                            session.status,
+                            session.isolation_mode,
+                            session.branch_name
+                        );
+                    }
+                }
+                if !verbose {
+                    return Ok(());
+                }
+                println!();
+            } else if let Ok(store) = rembrandt::state::StateStore::open(&repo_path) {
+                let sessions = store.list_sessions()?;
+                if !sessions.is_empty() {
+                    println!("V2 tracked sessions (state.db):");
+                    for session in &sessions {
+                        println!(
+                            "  {} [{}] {} {}",
+                            session.agent_id,
+                            session.status,
+                            session.isolation_mode,
+                            session.branch_name
+                        );
+                    }
+                    println!();
+                }
+            }
+
             let manager = WorktreeManager::new(&repo_path)?;
             let worktrees = manager.list_worktrees()?;
 
@@ -291,15 +334,10 @@ fn main() -> Result<()> {
             if verbose {
                 println!("\nIntegrations:");
                 let beads = rembrandt::integration::beads::BeadsIntegration::new();
-                let porque = rembrandt::integration::porque::PorqueIntegration::new();
                 let agent_mail = rembrandt::integration::agent_mail::AgentMailIntegration::new();
                 println!(
-                    "  beads:      {}",
+                    "  beads (br): {}",
                     if beads.is_available() { "available" } else { "not found" }
-                );
-                println!(
-                    "  porque:     {}",
-                    if porque.is_available() { "available" } else { "not found" }
                 );
                 println!(
                     "  agent-mail: {}",
@@ -325,7 +363,7 @@ fn main() -> Result<()> {
         Commands::Merge { agent, no_check } => {
             println!("Merging work from agent {}...", agent);
             if !no_check {
-                println!("Running pq check...");
+                println!("Running pre-merge checks...");
             }
             // TODO: Merge worktree branch
         }
@@ -406,20 +444,27 @@ fn main() -> Result<()> {
             println!("Rembrandt Status");
             println!("================");
             println!();
+
+            if use_v2 {
+                let orch = rembrandt::orchestrator::Orchestrator::new(
+                    &repo_path,
+                    rembrandt::runtime::PiRuntime::new(),
+                )?;
+                let sessions = orch.list_agents()?;
+                println!("V2 Orchestration:");
+                println!("  runtime:     {}", rembrandt::runtime::PiRuntime::new().name());
+                println!("  state.db:    {}", orch.state().db_path().display());
+                println!("  sessions:    {}", sessions.len());
+                println!();
+            }
+
             println!("Integrations:");
 
             // Check beads
             let beads = rembrandt::integration::beads::BeadsIntegration::new();
             println!(
-                "  beads:      {}",
+                "  beads (br): {}",
                 if beads.is_available() { "available" } else { "not found" }
-            );
-
-            // Check porque
-            let porque = rembrandt::integration::porque::PorqueIntegration::new();
-            println!(
-                "  porque:     {}",
-                if porque.is_available() { "available" } else { "not found" }
             );
 
             // Check agent-mail
@@ -428,6 +473,12 @@ fn main() -> Result<()> {
                 "  agent-mail: {}",
                 if agent_mail.is_available() { "connected" } else { "not configured" }
             );
+
+            if use_v2 {
+                println!();
+                println!("Mode:");
+                println!("  CLI routing: v2-enabled (--v2)");
+            }
         }
     }
 
