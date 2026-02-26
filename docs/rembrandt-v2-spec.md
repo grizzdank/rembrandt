@@ -27,7 +27,8 @@ The goal: run N agents in parallel on a codebase with isolation, coordination, a
 │  pi_agent_rust      — Agent Harness (LLM, tools,    │
 │                       extensions, security)          │
 ├─────────────────────────────────────────────────────┤
-│  cmux / libghostty  — Terminal GUI (macOS native)    │
+│  libghostty (MIT)   — Terminal rendering (embedded)  │
+│  agent-browser      — Browser automation (Apache-2.0)│
 │  tmux               — Headless fallback (Linux)      │
 ├─────────────────────────────────────────────────────┤
 │  Profundo           — Memory (semantic search,       │
@@ -42,7 +43,8 @@ The goal: run N agents in parallel on a codebase with isolation, coordination, a
 | **Rembrandt** | Agent lifecycle, worktree isolation, hub coordination, merge pipeline, competition mode, task routing | LLM calls, tool execution, model selection, terminal rendering |
 | **pi_agent_rust** | LLM provider abstraction (17+), tool system (read/write/edit/bash), session management (JSONL tree, branching, compaction), extension API, security (capability gates, command mediation) | Multi-agent coordination, git isolation, governance |
 | **Shoal** | Policy evaluation, approval workflows, audit logging, governance rules | Agent execution, orchestration |
-| **cmux/libghostty** | Terminal rendering, vertical tabs, agent notifications (OSC sequences), in-app browser, macOS native UX | Agent logic, coordination |
+| **libghostty** | GPU-accelerated terminal rendering, Ghostty config compat | Agent logic, coordination, UI chrome |
+| **agent-browser** | Headless browser automation, accessibility tree snapshots, element interaction | Visual browser display |
 | **Profundo** | Semantic search over past sessions, learning extraction, memory persistence | Real-time agent state |
 
 ---
@@ -175,19 +177,39 @@ User Request
 
 ## Terminal Rendering
 
-### Primary: cmux (macOS)
+### License Analysis (Feb 2026)
 
-cmux wraps libghostty in a native Swift/AppKit app. Rembrandt integrates via:
+cmux (AGPL-3.0) was originally considered as the terminal layer. After analysis:
 
-1. **Socket API / CLI** — `cmux` exposes a socket for workspace management
-2. **OSC sequences** — Rembrandt emits custom terminal sequences that cmux picks up for sidebar updates (agent status, cost tracking, current action)
-3. **Notification hooks** — `cmux notify` for agent-needs-attention alerts with context
+- **cmux is AGPL-3.0** — embedding or distributing with Rembrandt would require open-sourcing the entire Rembrandt stack. Incompatible with Shoal's commercial model.
+- **libghostty is MIT** — the underlying rendering engine from Ghostty is freely embeddable. cmux just wraps it in a Swift app with UI chrome.
+- **agent-browser is Apache-2.0** — Vercel's headless browser automation CLI. cmux ported this to WKWebView, but the original standalone CLI is superior (full Chromium vs WKWebView) and permissively licensed.
+
+**Decision: Build a thin custom shell around libghostty (MIT), not cmux (AGPL).**
+
+cmux validated the approach — libghostty works as an embeddable renderer, OSC notification parsing is straightforward (~100 lines), and the workspace model is sound. We take the design patterns, not the code.
+
+### Primary: Custom macOS GUI (libghostty + AppKit)
+
+A thin Swift/AppKit app embedding libghostty directly. Rembrandt owns the entire UX:
+
+1. **libghostty C API** — GPU-accelerated terminal rendering, reads existing `~/.config/ghostty/config` for themes/fonts/colors
+2. **OSC 9/99/777 parser** — Parse terminal notification sequences to detect agent-needs-attention state. Ghostty's own OSC parser handles most of this; add kitty OSC 99 support (~100 lines, same patch cmux's Ghostty fork adds)
+3. **Notification system** — Blue ring on pane + sidebar badge when agent emits notification. `Cmd+Shift+U` to jump to latest unread
+4. **Unix socket API** — For external scripting: create workspaces, split panes, send keystrokes, query agent status
+5. **agent-browser integration** — `agent-browser` (Apache-2.0) as CLI backend for headless browser automation. Optionally embed WKWebView for visual split pane (our own code, no AGPL)
 
 **UX:**
 - Vertical sidebar with agent fleet status
 - Each agent gets a tab with: git branch, CWD, status icon, cost
-- Blue ring on pane when agent is waiting for input
-- In-app scriptable browser for visual verification
+- Notification rings on panes when agent is waiting for input
+- Optional browser split pane for visual verification (WKWebView, our code)
+
+**Design patterns borrowed from cmux (inspiration, not code):**
+- Workspace → panes → surfaces abstraction
+- Per-surface type (terminal | browser) with unified tab management
+- Socket API verb design: `system.identify`, workspace/pane CRUD, send-keys
+- Session persistence schema: layout + working dirs + scrollback on relaunch
 
 ### Fallback: tmux (Linux/headless)
 
@@ -196,20 +218,7 @@ For Poza and CI/server use:
 - `tmux capture-pane -t agent-a` for status thumbnails
 - `tmux attach -t agent-a` for direct interaction
 - Rembrandt TUI (ratatui) as dashboard over tmux sessions
-
-### Decision: Embed vs Integrate
-
-**TBD.** Two paths for cmux:
-
-| | Embed libghostty | Integrate with cmux |
-|---|---|---|
-| **Approach** | Build custom macOS app using libghostty C API directly | Use cmux as-is, integrate via socket API |
-| **Control** | Full — own the entire UX | Partial — ride cmux's UX decisions |
-| **Effort** | High — Swift/AppKit, C interop | Low — CLI/socket integration |
-| **Updates** | Maintain libghostty binding | Ride cmux releases |
-| **Risk** | libghostty API stability | cmux dev's roadmap alignment |
-
-**Recommendation:** Start with cmux integration. If it chafes, the libghostty embedding path remains open. Use cmux for a week before deciding.
+- `agent-browser` CLI works identically in headless mode (no WKWebView needed)
 
 ---
 
@@ -218,11 +227,13 @@ For Poza and CI/server use:
 | Dependency | Source | License | Risk |
 |-----------|--------|---------|------|
 | pi_agent_rust | github.com/Dicklesworthstone/pi_agent_rust (forked to grizzdank) | MIT + Rider | Single dev, but forked. ~497K lines. |
-| libghostty | Part of Ghostty project | MIT | Stable enough for cmux to ship against. C API. |
-| cmux | Third-party macOS app | TBD | Single dev. macOS only. |
+| libghostty | Part of Ghostty project | **MIT** | Stable — cmux ships against it. C API. |
+| agent-browser | github.com/vercel-labs/agent-browser | **Apache-2.0** | Vercel-backed, 16K stars, Rust+Node. Headless Chromium via Playwright. |
 | asupersync | Dicklesworthstone/asupersync | MIT | Not Tokio — potential async runtime conflicts |
 | Shoal | grizzdank/shoal (private) | Proprietary | Ours |
 | Profundo | Local Rust binary | Ours | Ours |
+
+**Explicitly excluded:** cmux (AGPL-3.0) — validated the libghostty embedding approach but license is incompatible with commercial distribution. Design patterns referenced, no code used.
 
 ### Runtime Compatibility Note
 
@@ -259,7 +270,7 @@ From current Rembrandt codebase (~5.2K lines):
 
 - `src/agent/` (245 lines) — replaced by pi provider system
 - `src/daemon/` (817 lines) — replaced by pi session management
-- `src/tui/` (1,075 lines) — replaced by cmux/tmux
+- `src/tui/` (1,075 lines) — replaced by custom libghostty GUI (macOS) / tmux (Linux)
 - `src/cli/mod.rs` (146 lines) — rewritten to orchestrate pi sessions
 
 **Kept:** `src/worktree/` (117 lines), `src/competition/` (1,202 lines), `src/integration/` (309 lines)
@@ -304,11 +315,12 @@ rembrandt audit                   # Show audit trail
 ## Open Questions
 
 1. **asupersync vs Tokio** — Can they coexist? Or does pi_agent_rust need to be subprocess/RPC?
-2. **cmux socket API stability** — Is it documented? Versioned?
+2. **libghostty C API surface** — Document the embedding API. Reference: Ghostty source + cmux's `GhosttyTerminalView.swift` as integration example (pattern only, no AGPL code).
 3. **pi_agent_rust lib API surface** — What's actually exported? Is the Agent type usable as a library?
 4. **Shoal integration depth** — Pre-execution gates only, or inline tool-call interception?
 5. **Profundo integration** — Should agents have access to memory? How does that work with worktree isolation?
 6. **OpenClaw relationship** — Rembrandt could eventually replace OpenClaw's agent runtime for multi-agent use cases. Complementary or competitive?
+7. **agent-browser headed mode** — For the visual browser split, evaluate: (a) WKWebView embed (our code), (b) agent-browser `--headed` with Chromium window, (c) headless-only with screenshot feedback. Trade-off: development effort vs visual polish.
 
 ---
 
@@ -328,9 +340,13 @@ rembrandt audit                   # Show audit trail
 - [ ] Competition mode with pi's model system
 
 ### Phase 3: GUI
-- [ ] cmux integration via socket API
-- [ ] OSC sequence hooks for fleet status
-- [ ] tmux fallback for headless
+- [ ] Build thin Swift/AppKit shell around libghostty C API
+- [ ] Implement OSC 9/99/777 notification parser (~100 lines)
+- [ ] Sidebar with agent fleet status (git branch, CWD, cost, status)
+- [ ] Notification rings + jump-to-unread (Cmd+Shift+U)
+- [ ] Unix socket API for external scripting
+- [ ] agent-browser integration (headless CLI + optional WKWebView split)
+- [ ] tmux fallback for headless/Linux
 
 ### Phase 4: Governance
 - [ ] Shoal policy hooks (pre-spawn, pre-merge)
